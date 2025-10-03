@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="管道与重定向详解#
+Unix 哲学#
+在 Unix 系统中，任何程序都可以实现三个接口，即：标准输入（stdin）、标准输出（stdout）、标准错误输出（stderr），你应该注意到，这三个东西前面都有标准两个字，是的，正是这种标准，使得 Unix 系统中的所有独立的程序可以相互传递数据而没有任何限制，这种机制给用户带来了极大的方便，这正是 Unix 哲学！
+什么是管道#
+在 Unix/Linux 中，有一个常用的符号，叫做管道符，写做：&quot;|&quot;，举个例子：
+ls / | grep usrls 和 grep 是两个独立的程序，但是 ls 的输出数据可以传给 grep 继续处理，而管道符&quot;|&ldquo;在中间起到了数据传输的作用，正如其名，它就像一根橡胶水管，这根水管的两端可以连接任意程序，因为这些程序都向外提供了一组一模一样的接口，这样我们就可以将任意数量的不同功能的程序随意组合起来使用。
+什么是重定向#
+在上例中，管道符的一端连接到 ls 的标准输出，另一端连接到 grep 的标准输入，那我们能不能将其中一端连接到一个文件呢？这样我们就可以将结果数据保存下来，或者将一个文件输入到某个程序中去。当然可以，这时就用到重定向了，下面以 Bash Shell 为例，解释常用重定向符号的意义及其用法。
+重定向符号#
+
+0&lt; 标准输入重定向，0可省略
+1&gt; 标准输出重定向，1可省略
+2&gt; 标准错误输出重定向
+它们的用法都是左边给定一个程序，右边给定一个文件，&gt; 表示覆盖，&gt;&gt; 表示追加。
+
+输出重定向#
+如果我想把一个程序的标准输出追加到 o.txt 文件中，而错误输出覆盖到 e.txt 文件中，可以这样写：
+ls &gt;&gt; o.txt 2&gt; e.txt把标准输出与错误输出都写入到 o.txt：
+ls &amp;&gt; o.txt或者像下面这样写
+ls &gt; o.txt 2&gt;&amp;1这两种写法是等价的，但明显第一种更为简洁。
+但不能写成下面这样：
+ls 2&gt;&amp;1 &gt; o.txt它不会像你期望的那样执行，这行命令中有两个重定向操作，所有操作符会被从左到右依次解释，首先错误输出中的数据被重定向到标准输出流中，这时标准输出指向的是终端，然后第二个重定向操作将标准输出重定向到了 o.txt，但这次操作只影响了标准输出，并没有影响错误输出的指向。
+上面的解释有些牵强，因为博主实在不知道该怎样翻译，官方解释如下：
+
+directs only the standard output to file dirlist, because the standard error was duplicated from the standard output before the standard output was redirected to dirlist.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/linux/linux-pipe-redirect.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="管道与重定向详解# Unix 哲学# 在 Unix 系统中，任何程序都可以实现三个接口，即：标准输入（stdin）、标准输出（stdout）、标准错误输出（stderr），你应该注意到，这三个东西前面都有标准两个字，是的，正是这种标准，使得 Unix 系统中的所有独立的程序可以相互传递数据而没有任何限制，这种机制给用户带来了极大的方便，这正是 Unix 哲学！
+什么是管道# 在 Unix/Linux 中，有一个常用的符号，叫做管道符，写做：&#34;|&#34;，举个例子：
+ls / | grep usrls 和 grep 是两个独立的程序，但是 ls 的输出数据可以传给 grep 继续处理，而管道符&#34;|“在中间起到了数据传输的作用，正如其名，它就像一根橡胶水管，这根水管的两端可以连接任意程序，因为这些程序都向外提供了一组一模一样的接口，这样我们就可以将任意数量的不同功能的程序随意组合起来使用。
+什么是重定向# 在上例中，管道符的一端连接到 ls 的标准输出，另一端连接到 grep 的标准输入，那我们能不能将其中一端连接到一个文件呢？这样我们就可以将结果数据保存下来，或者将一个文件输入到某个程序中去。当然可以，这时就用到重定向了，下面以 Bash Shell 为例，解释常用重定向符号的意义及其用法。
+重定向符号# 0&lt; 标准输入重定向，0可省略 1&gt; 标准输出重定向，1可省略 2&gt; 标准错误输出重定向 它们的用法都是左边给定一个程序，右边给定一个文件，&gt; 表示覆盖，&gt;&gt; 表示追加。 输出重定向# 如果我想把一个程序的标准输出追加到 o.txt 文件中，而错误输出覆盖到 e.txt 文件中，可以这样写：
+ls &gt;&gt; o.txt 2&gt; e.txt把标准输出与错误输出都写入到 o.txt：
+ls &amp;&gt; o.txt或者像下面这样写
+ls &gt; o.txt 2&gt;&amp;1这两种写法是等价的，但明显第一种更为简洁。
+但不能写成下面这样：
+ls 2&gt;&amp;1 &gt; o.txt它不会像你期望的那样执行，这行命令中有两个重定向操作，所有操作符会被从左到右依次解释，首先错误输出中的数据被重定向到标准输出流中，这时标准输出指向的是终端，然后第二个重定向操作将标准输出重定向到了 o.txt，但这次操作只影响了标准输出，并没有影响错误输出的指向。
+上面的解释有些牵强，因为博主实在不知道该怎样翻译，官方解释如下：
+directs only the standard output to file dirlist, because the standard error was duplicated from the standard output before the standard output was redirected to dirlist.">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="linux">
+<title>管道与重定向详解 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/linux/linux-pipe-redirect.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-linux">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle" checked />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="active">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle"  />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>管道与重定向详解</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#unix-哲学">Unix 哲学</a></li>
+    <li><a href="#什么是管道">什么是管道</a></li>
+    <li><a href="#什么是重定向">什么是重定向</a></li>
+    <li><a href="#重定向符号">重定向符号</a></li>
+    <li><a href="#输出重定向">输出重定向</a></li>
+    <li><a href="#输入重定向">输入重定向</a></li>
+    <li><a href="#命名管道">命名管道</a></li>
+    <li><a href="#创建文件描述符file-descriptors">创建文件描述符(File Descriptors)</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="管道与重定向详解">管道与重定向详解<a class="anchor" href="#%e7%ae%a1%e9%81%93%e4%b8%8e%e9%87%8d%e5%ae%9a%e5%90%91%e8%af%a6%e8%a7%a3">#</a></h1>
+<h2 id="unix-哲学">Unix 哲学<a class="anchor" href="#unix-%e5%93%b2%e5%ad%a6">#</a></h2>
+<p>在 Unix 系统中，任何程序都可以实现三个接口，即：标准输入（stdin）、标准输出（stdout）、标准错误输出（stderr），你应该注意到，这三个东西前面都有标准两个字，是的，正是这种标准，使得 Unix 系统中的所有独立的程序可以相互传递数据而没有任何限制，这种机制给用户带来了极大的方便，这正是 Unix 哲学！</p>
+<h2 id="什么是管道">什么是管道<a class="anchor" href="#%e4%bb%80%e4%b9%88%e6%98%af%e7%ae%a1%e9%81%93">#</a></h2>
+<p>在 Unix/Linux 中，有一个常用的符号，叫做管道符，写做：&quot;|&quot;，举个例子：</p>
+<pre tabindex="0"><code>ls / | grep usr</code></pre><p><code>ls</code> 和 <code>grep</code> 是两个独立的程序，但是 <code>ls</code> 的输出数据可以传给 <code>grep</code> 继续处理，而管道符&quot;|&ldquo;在中间起到了数据传输的作用，正如其名，它就像一根橡胶水管，这根水管的两端可以连接任意程序，因为这些程序都向外提供了一组一模一样的接口，这样我们就可以将任意数量的不同功能的程序随意组合起来使用。</p>
+<h2 id="什么是重定向">什么是重定向<a class="anchor" href="#%e4%bb%80%e4%b9%88%e6%98%af%e9%87%8d%e5%ae%9a%e5%90%91">#</a></h2>
+<p>在上例中，管道符的一端连接到 <code>ls</code> 的标准输出，另一端连接到 <code>grep</code> 的标准输入，那我们能不能将其中一端连接到一个文件呢？这样我们就可以将结果数据保存下来，或者将一个文件输入到某个程序中去。当然可以，这时就用到重定向了，下面以 Bash Shell 为例，解释常用重定向符号的意义及其用法。</p>
+<h2 id="重定向符号">重定向符号<a class="anchor" href="#%e9%87%8d%e5%ae%9a%e5%90%91%e7%ac%a6%e5%8f%b7">#</a></h2>
+<ol>
+<li><code>0&lt;</code> 标准输入重定向，0可省略</li>
+<li><code>1&gt;</code> 标准输出重定向，1可省略</li>
+<li><code>2&gt;</code> 标准错误输出重定向</li>
+<li>它们的用法都是左边给定一个程序，右边给定一个文件，<code>&gt;</code> 表示覆盖，<code>&gt;&gt;</code> 表示追加。</li>
+</ol>
+<h2 id="输出重定向">输出重定向<a class="anchor" href="#%e8%be%93%e5%87%ba%e9%87%8d%e5%ae%9a%e5%90%91">#</a></h2>
+<p>如果我想把一个程序的标准输出追加到 <code>o.txt</code> 文件中，而错误输出覆盖到 <code>e.txt</code> 文件中，可以这样写：</p>
+<pre tabindex="0"><code>ls &gt;&gt; o.txt 2&gt; e.txt</code></pre><p>把标准输出与错误输出都写入到 <code>o.txt</code>：</p>
+<pre tabindex="0"><code>ls &amp;&gt; o.txt</code></pre><p>或者像下面这样写</p>
+<pre tabindex="0"><code>ls &gt; o.txt 2&gt;&amp;1</code></pre><p>这两种写法是等价的，但明显第一种更为简洁。</p>
+<p>但不能写成下面这样：</p>
+<pre tabindex="0"><code>ls 2&gt;&amp;1 &gt; o.txt</code></pre><p>它不会像你期望的那样执行，这行命令中有两个重定向操作，所有操作符会被从左到右依次解释，首先错误输出中的数据被重定向到标准输出流中，这时标准输出指向的是终端，然后第二个重定向操作将标准输出重定向到了 <code>o.txt</code>，但这次操作只影响了标准输出，并没有影响错误输出的指向。</p>
+<p>上面的解释有些牵强，因为博主实在不知道该怎样翻译，官方解释如下：</p>
+<blockquote class='book-hint '>
+<p>directs only the standard output to file dirlist, because the standard error was duplicated from the standard output before the standard output was redirected to dirlist.</p></blockquote><h2 id="输入重定向">输入重定向<a class="anchor" href="#%e8%be%93%e5%85%a5%e9%87%8d%e5%ae%9a%e5%90%91">#</a></h2>
+<p>将 <code>i.txt</code> 输入到 <code>cat</code>:</p>
+<pre tabindex="0"><code>cat &lt; i.txt</code></pre><p>将一段文本重定向到 <code>cat</code>，文本中包含的代码被正常执行：</p>
+<pre tabindex="0"><code>cat &lt;&lt; EOF
+hello
+The current time:
+	`date`
+EOF</code></pre><p>将一段文本重定向到 <code>cat</code>，文本中所有内容均被视为普通字符串：</p>
+<pre tabindex="0"><code>cat &lt;&lt;&#39;EOF&#39;
+hello
+The current time:
+	`date`
+EOF</code></pre><p>将一段文本重定向到 <code>cat</code>，文本中所有内容均被视为普通字符串，且忽略所有前导制表符（也就是date前面的空白部分）：</p>
+<pre tabindex="0"><code>cat &lt;&lt;-&#39;EOF&#39;
+hello
+The current time:
+	`date`
+EOF</code></pre><p>还有一种不常见的输入重定向：</p>
+<pre tabindex="0"><code>grep Sep &lt;&lt;&lt; `date`</code></pre><p><code>&lt;&lt;&lt;</code> 后面的字符中如果包含代码，会被正常执行，然后再重定向给 <code>grep</code>。</p>
+<h2 id="命名管道">命名管道<a class="anchor" href="#%e5%91%bd%e5%90%8d%e7%ae%a1%e9%81%93">#</a></h2>
+<p>前面讲的管道&rdquo;|&ldquo;是没有名字的，这将导致它不能在两个独立的进程间传递数据，这时可以创建一个命名管道来解决。</p>
+<pre tabindex="0"><code>mkfifo /tmp/fifo
+
+ll /tmp/fifo
+prw-r--r-- 1 root root 0 Sep 21 15:59 /tmp/fifo</code></pre><p>等待读取数据，如果管道里没有数据，会一直阻塞：</p>
+<pre tabindex="0"><code>cat /tmp/fifo</code></pre><p>另一个进程写入数据：</p>
+<pre tabindex="0"><code>echo hello &gt; /tmp/fifo</code></pre><p>这时<code>cat</code>命令会后收到<code>echo</code>命令输出的数据，但当在<code>cat</code>命令后再执行<code>ctrl + c</code>命令时，会导致<code>echo</code>命令退出，如果想随时查看管道中的数据而不影响<code>echo</code>命令，可以使用下面的方式。</p>
+<h2 id="创建文件描述符file-descriptors">创建文件描述符(File Descriptors)<a class="anchor" href="#%e5%88%9b%e5%bb%ba%e6%96%87%e4%bb%b6%e6%8f%8f%e8%bf%b0%e7%ac%a6file-descriptors">#</a></h2>
+<p>我们还可以自定义一个文件描述符9，并将其绑定到一个管道文件：</p>
+<pre tabindex="0"><code>mkfifo /tmp/fifo
+exec 9&lt;&gt;/tmp/fifo</code></pre><p>然后向管道写入数据：</p>
+<pre tabindex="0"><code>echo `date` &gt;&amp;9</code></pre><p>从管道读取数据：</p>
+<pre tabindex="0"><code>read -u 9 var
+echo $var</code></pre><p>解除绑定：</p>
+<pre tabindex="0"><code>exec 9&lt;&amp;-
+exec 9&gt;&amp;-</code></pre><p>-End-</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/linux/linux-parallel-progress.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="炫酷的并行进度条" />
+        <span>炫酷的并行进度条</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/linux/linux-read-file-by-line.html" class="flex align-center">
+        <span>逐行读取文件的几种方法</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="逐行读取文件的几种方法" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#unix-哲学">Unix 哲学</a></li>
+    <li><a href="#什么是管道">什么是管道</a></li>
+    <li><a href="#什么是重定向">什么是重定向</a></li>
+    <li><a href="#重定向符号">重定向符号</a></li>
+    <li><a href="#输出重定向">输出重定向</a></li>
+    <li><a href="#输入重定向">输入重定向</a></li>
+    <li><a href="#命名管道">命名管道</a></li>
+    <li><a href="#创建文件描述符file-descriptors">创建文件描述符(File Descriptors)</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

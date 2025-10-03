@@ -1,0 +1,1866 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="分类算法 - 朴素贝叶斯#
+朴素贝叶斯是种简单而有效的分类算法，被应用在很多二元分类器中，那什么叫二元分类？也就是非A即B，假设我现在用朴素贝叶斯算法写一个分类器，然后输入一封邮件，它可以根据特征库来判断这封邮件是不是垃圾邮件。当然，它还可以用来处理多元分类的问题，比如：文章分类、拼写纠正等等。
+基本原理#
+在网上已经有很多关于朴素贝叶斯的介绍了，其中不乏一些讲得深刻而又通俗易懂的文章，本文不准备长篇大论探讨它的数学原理及深层含义，不过基本原理还是得讲一下，先说一下条件概率模型，以下摘抄自wiki：
+
+公式：p(C|F1,&hellip;,Fn)
+解释：独立的类别变量C有若干类别，条件依赖于若干特征变量。意思是说，在F1,F2,F3&hellip;这些特征发生的情况下，类别C的发生概率，很容易理解。 那么，如果我事先知道类别C发生的情况下，F1,F2,F3&hellip;出现的概率，也就是p(F1,&hellip;,Fn|C)，那么也可以反过来求出p(C|F1,&hellip;,Fn)，这其实就是它基本原理了，以下是贝叶斯公式：
+p(类别1|特征1,特征2,特征3...) = p(特征1,特征2,特征3...|类别1) * p(类别1) / p(特征1,特征2,特征3...)解释： p(类别1|特征1,特征2,特征3&hellip;) 表示在特征1、特征2、特征3&hellip;发生的情况下，类别1发生的概率。 p(特征1,特征2,特征3&hellip;|类别1) 表示在类别1发生的情况下，特征1、特征2、特征3&hellip;发生的概率。 p(类别1) 表示类别1在所有类别中出的概率 p(特征1,特征2,特征3&hellip;) 表示特征1,特征2,特征3&hellip;在特征库中出现的概率 重复使用链式法则后，最终可以将公式转换为这样：
+p(类别1|特征1,特征2,特征3...) = p(特征1|类别1) * p(特征2|类别1) * p(特征3|类别1) ...这就是朴素贝叶斯公式了。
+实现邮件分类器#
+之前在研究Spark的MLLib时第一次接触到朴素贝叶斯算法（实际上已经是2016年的事了），并动手实现了一个简单的垃圾邮件识别程序，今天重新整理一下，我会在代码中一步一步讲明原理，先说一下实现邮件分类器的步骤：
+
+收集数据，准备一些正常的邮件和垃圾邮件，将它们放在两个不同的目录中
+特征提取，要让程序判断一封邮件是不是垃圾邮件，就需要告诉程序，什么是正常邮件，什么是垃圾邮件，这一步叫特征提取，也可以叫做训练集，提取的方法很简单，就是分别计算出正常邮件中与垃圾邮件中所有单词出现的数次及概率，这样我们就有了两个训练集
+识别邮件，这时需要写一个函数用来接收并识别给定的邮件，其原理也很简单，先将指定的邮件中的所有单词提取出来，然后计算这些单词在两个训练集出现的概率之积即可，这样就得到两个数字，从哪个训练集中计算出的数字大，那这封邮件就属于哪种类型。
+参数调整，当程序基本实现后，需要对各步骤中的参数进行调整，比如在特征提取时，我去掉了只出现一次或两次的单词，又比如，在识别新邮件时，如果这封邮件中出现了训练集中没有的单词时，应该给定它一个默认的概率值
+下面给出一个实际的例子，在本例中我大概用了三千封历史邮件，分别放在了两个目录中，例子中的数据实在是想不起来在哪下载的，所以请同学们自行收集吧。
+
+首先是准备数据：
+package com.algorithm.bayes
+ 
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
+import scala.io.Source
+import java.io.File
+import scala.sys.process.ProcessBuilder.Source
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
+ 
+/**
+ * 利用贝叶斯实现的邮件分类器，提交给Spark执行
+ */
+object Classification {
+   
+  def main(args: Array[String]): Unit = {
+     
+    //初始化Spark
+    val conf = new SparkConf().setAppName(this.getClass.getName)
+    val sc = new SparkContext(conf)
+     
+    //该目录内均为正常邮件
+    var easy = &#34;/home/kxdmmr/src/ml-data/Email-data/easy_ham&#34;
+     
+    //该目录内均为垃圾邮件
+    var spam = &#34;/home/kxdmmr/src/ml-data/Email-data/spam&#34;
+     
+...然后就是创建两个特征库，这个是重中之重：">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/algorithm/algorithm-naive-bayes.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="分类算法 - 朴素贝叶斯# 朴素贝叶斯是种简单而有效的分类算法，被应用在很多二元分类器中，那什么叫二元分类？也就是非A即B，假设我现在用朴素贝叶斯算法写一个分类器，然后输入一封邮件，它可以根据特征库来判断这封邮件是不是垃圾邮件。当然，它还可以用来处理多元分类的问题，比如：文章分类、拼写纠正等等。
+基本原理# 在网上已经有很多关于朴素贝叶斯的介绍了，其中不乏一些讲得深刻而又通俗易懂的文章，本文不准备长篇大论探讨它的数学原理及深层含义，不过基本原理还是得讲一下，先说一下条件概率模型，以下摘抄自wiki：
+公式：p(C|F1,…,Fn) 解释：独立的类别变量C有若干类别，条件依赖于若干特征变量。
+意思是说，在F1,F2,F3…这些特征发生的情况下，类别C的发生概率，很容易理解。 那么，如果我事先知道类别C发生的情况下，F1,F2,F3…出现的概率，也就是p(F1,…,Fn|C)，那么也可以反过来求出p(C|F1,…,Fn)，这其实就是它基本原理了，以下是贝叶斯公式：
+p(类别1|特征1,特征2,特征3...) = p(特征1,特征2,特征3...|类别1) * p(类别1) / p(特征1,特征2,特征3...)解释： p(类别1|特征1,特征2,特征3…) 表示在特征1、特征2、特征3…发生的情况下，类别1发生的概率。 p(特征1,特征2,特征3…|类别1) 表示在类别1发生的情况下，特征1、特征2、特征3…发生的概率。 p(类别1) 表示类别1在所有类别中出的概率 p(特征1,特征2,特征3…) 表示特征1,特征2,特征3…在特征库中出现的概率 重复使用链式法则后，最终可以将公式转换为这样：
+p(类别1|特征1,特征2,特征3...) = p(特征1|类别1) * p(特征2|类别1) * p(特征3|类别1) ...这就是朴素贝叶斯公式了。
+实现邮件分类器# 之前在研究Spark的MLLib时第一次接触到朴素贝叶斯算法（实际上已经是2016年的事了），并动手实现了一个简单的垃圾邮件识别程序，今天重新整理一下，我会在代码中一步一步讲明原理，先说一下实现邮件分类器的步骤：
+收集数据，准备一些正常的邮件和垃圾邮件，将它们放在两个不同的目录中 特征提取，要让程序判断一封邮件是不是垃圾邮件，就需要告诉程序，什么是正常邮件，什么是垃圾邮件，这一步叫特征提取，也可以叫做训练集，提取的方法很简单，就是分别计算出正常邮件中与垃圾邮件中所有单词出现的数次及概率，这样我们就有了两个训练集 识别邮件，这时需要写一个函数用来接收并识别给定的邮件，其原理也很简单，先将指定的邮件中的所有单词提取出来，然后计算这些单词在两个训练集出现的概率之积即可，这样就得到两个数字，从哪个训练集中计算出的数字大，那这封邮件就属于哪种类型。 参数调整，当程序基本实现后，需要对各步骤中的参数进行调整，比如在特征提取时，我去掉了只出现一次或两次的单词，又比如，在识别新邮件时，如果这封邮件中出现了训练集中没有的单词时，应该给定它一个默认的概率值 下面给出一个实际的例子，在本例中我大概用了三千封历史邮件，分别放在了两个目录中，例子中的数据实在是想不起来在哪下载的，所以请同学们自行收集吧。 首先是准备数据：
+package com.algorithm.bayes import org.apache.spark.SparkConf import org.apache.spark.SparkContext import scala.io.Source import java.io.File import scala.sys.process.ProcessBuilder.Source import scala.collection.mutable.ArrayBuffer import scala.collection.mutable.HashMap /** * 利用贝叶斯实现的邮件分类器，提交给Spark执行 */ object Classification { def main(args: Array[String]): Unit = { //初始化Spark val conf = new SparkConf().setAppName(this.getClass.getName) val sc = new SparkContext(conf) //该目录内均为正常邮件 var easy = &#34;/home/kxdmmr/src/ml-data/Email-data/easy_ham&#34; //该目录内均为垃圾邮件 var spam = &#34;/home/kxdmmr/src/ml-data/Email-data/spam&#34; ...然后就是创建两个特征库，这个是重中之重：">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="algorithm">
+<title>分类算法 - 朴素贝叶斯 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/algorithm/algorithm-naive-bayes.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-algorithm">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle"  />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle" checked />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="active">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>分类算法 - 朴素贝叶斯</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#基本原理">基本原理</a></li>
+    <li><a href="#实现邮件分类器">实现邮件分类器</a></li>
+    <li><a href="#结语">结语</a></li>
+    <li><a href="#参考资料">参考资料</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="分类算法---朴素贝叶斯">分类算法 - 朴素贝叶斯<a class="anchor" href="#%e5%88%86%e7%b1%bb%e7%ae%97%e6%b3%95---%e6%9c%b4%e7%b4%a0%e8%b4%9d%e5%8f%b6%e6%96%af">#</a></h1>
+<p>朴素贝叶斯是种简单而有效的分类算法，被应用在很多二元分类器中，那什么叫二元分类？也就是非A即B，假设我现在用朴素贝叶斯算法写一个分类器，然后输入一封邮件，它可以根据特征库来判断这封邮件是不是垃圾邮件。当然，它还可以用来处理多元分类的问题，比如：文章分类、拼写纠正等等。</p>
+<h2 id="基本原理">基本原理<a class="anchor" href="#%e5%9f%ba%e6%9c%ac%e5%8e%9f%e7%90%86">#</a></h2>
+<p>在网上已经有很多关于朴素贝叶斯的介绍了，其中不乏一些讲得深刻而又通俗易懂的文章，本文不准备长篇大论探讨它的数学原理及深层含义，不过基本原理还是得讲一下，先说一下条件概率模型，以下摘抄自wiki：</p>
+<blockquote class='book-hint '>
+<p>公式：p(C|F1,&hellip;,Fn)
+解释：独立的类别变量C有若干类别，条件依赖于若干特征变量。</p></blockquote><p>意思是说，在F1,F2,F3&hellip;这些特征发生的情况下，类别C的发生概率，很容易理解。 那么，如果我事先知道类别C发生的情况下，F1,F2,F3&hellip;出现的概率，也就是p(F1,&hellip;,Fn|C)，那么也可以反过来求出p(C|F1,&hellip;,Fn)，这其实就是它基本原理了，以下是贝叶斯公式：</p>
+<pre tabindex="0"><code>p(类别1|特征1,特征2,特征3...) = p(特征1,特征2,特征3...|类别1) * p(类别1) / p(特征1,特征2,特征3...)</code></pre><p>解释： p(类别1|特征1,特征2,特征3&hellip;) 表示在特征1、特征2、特征3&hellip;发生的情况下，类别1发生的概率。 p(特征1,特征2,特征3&hellip;|类别1) 表示在类别1发生的情况下，特征1、特征2、特征3&hellip;发生的概率。 p(类别1) 表示类别1在所有类别中出的概率 p(特征1,特征2,特征3&hellip;) 表示特征1,特征2,特征3&hellip;在特征库中出现的概率 重复使用链式法则后，最终可以将公式转换为这样：</p>
+<pre tabindex="0"><code>p(类别1|特征1,特征2,特征3...) = p(特征1|类别1) * p(特征2|类别1) * p(特征3|类别1) ...</code></pre><p>这就是朴素贝叶斯公式了。</p>
+<h2 id="实现邮件分类器">实现邮件分类器<a class="anchor" href="#%e5%ae%9e%e7%8e%b0%e9%82%ae%e4%bb%b6%e5%88%86%e7%b1%bb%e5%99%a8">#</a></h2>
+<p>之前在研究Spark的MLLib时第一次接触到朴素贝叶斯算法（实际上已经是2016年的事了），并动手实现了一个简单的垃圾邮件识别程序，今天重新整理一下，我会在代码中一步一步讲明原理，先说一下实现邮件分类器的步骤：</p>
+<ol>
+<li>收集数据，准备一些正常的邮件和垃圾邮件，将它们放在两个不同的目录中</li>
+<li>特征提取，要让程序判断一封邮件是不是垃圾邮件，就需要告诉程序，什么是正常邮件，什么是垃圾邮件，这一步叫特征提取，也可以叫做训练集，提取的方法很简单，就是分别计算出正常邮件中与垃圾邮件中所有单词出现的数次及概率，这样我们就有了两个训练集</li>
+<li>识别邮件，这时需要写一个函数用来接收并识别给定的邮件，其原理也很简单，先将指定的邮件中的所有单词提取出来，然后计算这些单词在两个训练集出现的概率之积即可，这样就得到两个数字，从哪个训练集中计算出的数字大，那这封邮件就属于哪种类型。</li>
+<li>参数调整，当程序基本实现后，需要对各步骤中的参数进行调整，比如在特征提取时，我去掉了只出现一次或两次的单词，又比如，在识别新邮件时，如果这封邮件中出现了训练集中没有的单词时，应该给定它一个默认的概率值
+下面给出一个实际的例子，在本例中我大概用了三千封历史邮件，分别放在了两个目录中，例子中的数据实在是想不起来在哪下载的，所以请同学们自行收集吧。</li>
+</ol>
+<p>首先是准备数据：</p>
+<pre tabindex="0"><code>package com.algorithm.bayes
+ 
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
+import scala.io.Source
+import java.io.File
+import scala.sys.process.ProcessBuilder.Source
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
+ 
+/**
+ * 利用贝叶斯实现的邮件分类器，提交给Spark执行
+ */
+object Classification {
+   
+  def main(args: Array[String]): Unit = {
+     
+    //初始化Spark
+    val conf = new SparkConf().setAppName(this.getClass.getName)
+    val sc = new SparkContext(conf)
+     
+    //该目录内均为正常邮件
+    var easy = &#34;/home/kxdmmr/src/ml-data/Email-data/easy_ham&#34;
+     
+    //该目录内均为垃圾邮件
+    var spam = &#34;/home/kxdmmr/src/ml-data/Email-data/spam&#34;
+     
+...</code></pre><p>然后就是创建两个特征库，这个是重中之重：</p>
+<pre tabindex="0"><code>//将所有正常邮件的文本都提取出来
+var easyArr = sc.parallelize(getEmailText(easy))
+//将所有垃圾邮件的文件都提取出来
+var spamArr = sc.parallelize(getEmailText(spam))
+ 
+//正常邮件中所有的单词,不去重
+var easySplit = easyArr.flatMap { x =&gt; x.split(&#34;[^a-zA-Z]+&#34;) }
+var easyLen = easySplit.count().toDouble
+ 
+//垃圾邮件中所有的单词,不去重
+var spamSplit = spamArr.flatMap { x =&gt; x.split(&#34;[^a-zA-Z]+&#34;) }
+var spamLen = spamSplit.count().toDouble
+ 
+//正常邮件中每个单词占所有单词的百分比及出现次数
+//结果数据的格式为：HashMap[单词: String,(出现次数: Double,百分比: Double)]
+var easyWordProb = new HashMap[String,(Double,Double)]()
+easySplit.map { x =&gt; (x,1.0) }.reduceByKey(_+_).filter(x =&gt; x._2 &gt; 2).collect().foreach(f =&gt; easyWordProb.put(f._1,(f._2,f._2/easyLen)))
+ 
+//垃圾邮件中每个单词占所有单词的百分比及出现次数
+//结果数据的格式为：HashMap[单词: String,(出现次数: Double,百分比: Double)]
+var spamWordProb = new HashMap[String,(Double,Double)]()
+spamSplit.map { x =&gt; (x,1.0) }.reduceByKey(_+_).filter(x =&gt; x._2 &gt; 2).collect().foreach(f =&gt; spamWordProb.put(f._1,(f._2,f._2/spamLen)))</code></pre><p>上面用到了一个函数，定义如下：</p>
+<pre tabindex="0"><code>/**
+ * 处理指定目录内的500封邮件，提取邮件内出现的所有单词
+ * 并封结果封装成一个数组，将其返回
+ */
+def getEmailText(path: String):ArrayBuffer[String] ={
+  var count = 0;
+  var textArr = new ArrayBuffer[String]()
+  var files = new File(path).listFiles()
+  var temp = new StringBuilder()
+  var isAdd = false
+  for(f &lt;- files){
+    if(count ==500)
+      return textArr;
+    count += 1
+    isAdd = false
+    temp.delete(0, temp.length)
+    var lines = Source.fromFile(f)
+    try{
+      for(line &lt;- lines.getLines()){
+        if(line.equals(&#34;&#34;))
+            isAdd = true
+        else
+          temp.append(line+&#34;,&#34;)
+      }
+    }catch{
+      case e:Exception =&gt; println(&#34;************** &#34;+e.toString())
+    }
+    lines.close()
+    textArr.append(temp.toString)
+  }
+  textArr
+}</code></pre><p>最后写一个函数，用来处理指定的邮件：</p>
+<pre tabindex="0"><code>    /**
+     * 识别指定邮件的类型，将结果打印到控制台
+     */
+    def getType(file: File){
+      var textArr = new ArrayBuffer[String]()
+      var isAdd = false
+      try{
+        for(x &lt;- Source.fromFile(file).getLines()){
+          if(x.equals(&#34;&#34;))
+            isAdd = true
+          else
+            textArr.append(x+&#34;,&#34;)
+        }
+      }catch{case e:Exception =&gt; None}
+      var result = textArr.flatMap { x =&gt; x.split(&#34;[^a-zA-Z]+&#34;) }
+       
+      var a = 1.0
+      var b = 1.0
+       
+      for(i &lt;- result ){
+        var easyPro = easyWordProb.getOrElse(i,(1.0,0.0001))._2
+        var spamPro = spamWordProb.getOrElse(i,(1.0,0.0001))._2
+        a = easyPro * a
+        b = spamPro * b
+      }
+       
+      if(a &gt; b)
+        println(&#34;此邮件为正常邮件 &#34;+a+&#34; &#34;+b)
+      else
+        println(&#34;此邮件为垃圾邮件 &#34;+a+&#34; &#34;+b)
+       
+    }
+  }
+}</code></pre><h2 id="结语">结语<a class="anchor" href="#%e7%bb%93%e8%af%ad">#</a></h2>
+<p>以上就是实现一个邮件分类器的所有步骤，单独解释贝叶斯可能比较难懂，但实际用的时候发现它的理原极其简单而又直接，这也许就是它名字的由来吧，刚开始接触朴素贝叶斯时查阅了很多资料，其中有几篇让我印象非常深刻，也推荐大家看一看：</p>
+<h2 id="参考资料">参考资料<a class="anchor" href="#%e5%8f%82%e8%80%83%e8%b5%84%e6%96%99">#</a></h2>
+<ul>
+<li>首先是wiki，理所当然，它的专业性很强，如果你的数学功底比较扎实的话，有这一篇就够了：
+<a href="https://zh.wikipedia.org/wiki/%E6%9C%B4%E7%B4%A0%E8%B4%9D%E5%8F%B6%E6%96%AF%E5%88%86%E7%B1%BB%E5%99%A8">朴素贝叶斯分类器</a></li>
+<li>这篇文章写的很好，举了很多例子，探讨了朴素贝叶斯更为深层的意义，且专业程度比起wiki有过之而无不及：
+<a href="http://mindhacks.cn/2008/09/21/the-magical-bayesian-method/">数学之美番外篇：平凡而又神奇的贝叶斯方法</a></li>
+<li>如果你像我一样，数学课没有好好听，那就看看下面这篇文章，相当之通俗易懂，而又很容易看清朴素贝叶斯的本质：
+<a href="http://www.jianshu.com/p/f6a3f3200689">自己动手写贝叶斯分类器给图书分类</a></li>
+</ul>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/algorithm/algorithm-collaborative-filtering.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="推荐算法 - 协同过滤" />
+        <span>推荐算法 - 协同过滤</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/algorithm/algorithm-quick-sort.html" class="flex align-center">
+        <span>排序算法 - 快速排序</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="排序算法 - 快速排序" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#基本原理">基本原理</a></li>
+    <li><a href="#实现邮件分类器">实现邮件分类器</a></li>
+    <li><a href="#结语">结语</a></li>
+    <li><a href="#参考资料">参考资料</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

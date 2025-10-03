@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="k8s 快速部署 1.7#
+最近（2017.07.30）k8s 又发布了新版本，这个版本中增加了两种持久化存储方案，StorygeOS 与 Local ，为了一探究竟，我部署了一套最新版的 k8s 集群，虽然我在半年前部署过一次，并写过一篇 k8s-v1.5 版本部署的文篇，但那次的经验已经不再适用于新版本，这让我又体验了一次 k8s 的部署过程，这简直是种折磨，我现在新重新整理出来，希望给读者带来帮助。
+环境说明#
+这次同样是用的 k8s 官方提供的快速安装工具 kubeadm，这种方式依然被官方视为实验性功能，并不建议用在生产环境之中，先说明一下我的环境。
+服务器三台：node1.docker.com, node2.docker.com, node3.docker.com
+操作系统：CentOS 7.2-1511 64位 Docker 版本：1.12.6
+Kubernetes 版本：1.7.0
+部署方式：官方提供的 kubeadm 工具
+准备 Linux#
+关于系统，我用的是 CentOS7.2，官方说的是只要 CentOS7 就可以，如果是 Ubuntu 的话，版本要在 Ubuntu 16.04 或以上，或者是 HypriotOS v1.0.1&#43; 系统，不过我没用过这个系统。。
+安装 Docker#
+所有节点都需要做这个步骤，这里要提醒大家一下，如果你按照 Docker 官网给出的方式，通过官方提供的 repo 源安装了最新版的 Docker，最好卸载掉，然后重新安装 1.12.x 版本的 Docker，否则后导致后面初始化 K8s 时失败，我已经在这个环节上浪费掉很多时间了，，k8s 官方说 Docker-1.13.x 也是可以的，但我没有试过，，所以正确的安装姿势是，用 CentosOS 7.2 自带的 repo 源来安装，如果你的系统中有 /etc/yum.repos.d/docker.repo 这个文件的话，请移除，然后执行：
+yum install docker-1.12.6 -y如果你的系统自带的源中没有找到 docker，那可以尝试从 Docker 官网安装，但一定要是 1.12.x 的 Docker 版本，请参考Docker 官方文档。">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/kubernetes/kubernetes-quick-deloy-17.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="k8s 快速部署 1.7# 最近（2017.07.30）k8s 又发布了新版本，这个版本中增加了两种持久化存储方案，StorygeOS 与 Local ，为了一探究竟，我部署了一套最新版的 k8s 集群，虽然我在半年前部署过一次，并写过一篇 k8s-v1.5 版本部署的文篇，但那次的经验已经不再适用于新版本，这让我又体验了一次 k8s 的部署过程，这简直是种折磨，我现在新重新整理出来，希望给读者带来帮助。
+环境说明# 这次同样是用的 k8s 官方提供的快速安装工具 kubeadm，这种方式依然被官方视为实验性功能，并不建议用在生产环境之中，先说明一下我的环境。
+服务器三台：node1.docker.com, node2.docker.com, node3.docker.com
+操作系统：CentOS 7.2-1511 64位 Docker 版本：1.12.6
+Kubernetes 版本：1.7.0
+部署方式：官方提供的 kubeadm 工具
+准备 Linux# 关于系统，我用的是 CentOS7.2，官方说的是只要 CentOS7 就可以，如果是 Ubuntu 的话，版本要在 Ubuntu 16.04 或以上，或者是 HypriotOS v1.0.1&#43; 系统，不过我没用过这个系统。。
+安装 Docker# 所有节点都需要做这个步骤，这里要提醒大家一下，如果你按照 Docker 官网给出的方式，通过官方提供的 repo 源安装了最新版的 Docker，最好卸载掉，然后重新安装 1.12.x 版本的 Docker，否则后导致后面初始化 K8s 时失败，我已经在这个环节上浪费掉很多时间了，，k8s 官方说 Docker-1.13.x 也是可以的，但我没有试过，，所以正确的安装姿势是，用 CentosOS 7.2 自带的 repo 源来安装，如果你的系统中有 /etc/yum.repos.d/docker.repo 这个文件的话，请移除，然后执行：
+yum install docker-1.12.6 -y如果你的系统自带的源中没有找到 docker，那可以尝试从 Docker 官网安装，但一定要是 1.12.x 的 Docker 版本，请参考Docker 官方文档。">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="kubernetes">
+<title>k8s 快速部署 1.7 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/kubernetes/kubernetes-quick-deloy-17.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-kubernetes">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle" checked />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="active">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>k8s 快速部署 1.7</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#环境说明">环境说明</a></li>
+    <li><a href="#准备-linux">准备 Linux</a></li>
+    <li><a href="#安装-docker">安装 Docker</a></li>
+    <li><a href="#关于网络">关于网络</a></li>
+    <li><a href="#安装-kubectl">安装 kubectl</a></li>
+    <li><a href="#安装-kubeadm-和其它组件">安装 kubeadm 和其它组件</a></li>
+    <li><a href="#使用-kubeadm-初始化主节点">使用 kubeadm 初始化主节点</a></li>
+    <li><a href="#安装-pod-网络">安装 pod 网络</a></li>
+    <li><a href="#加入其它节点">加入其它节点</a></li>
+    <li><a href="#安装-dashboard">安装 Dashboard</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="k8s-快速部署-17">k8s 快速部署 1.7<a class="anchor" href="#k8s-%e5%bf%ab%e9%80%9f%e9%83%a8%e7%bd%b2-17">#</a></h1>
+<p>最近（2017.07.30）k8s 又发布了新版本，这个版本中增加了两种持久化存储方案，StorygeOS 与 Local ，为了一探究竟，我部署了一套最新版的 k8s 集群，虽然我在半年前部署过一次，并写过一篇 k8s-v1.5 版本部署的文篇，但那次的经验已经不再适用于新版本，这让我又体验了一次 k8s 的部署过程，这简直是种折磨，我现在新重新整理出来，希望给读者带来帮助。</p>
+<h2 id="环境说明">环境说明<a class="anchor" href="#%e7%8e%af%e5%a2%83%e8%af%b4%e6%98%8e">#</a></h2>
+<p>这次同样是用的 k8s 官方提供的快速安装工具 <code>kubeadm</code>，这种方式依然被官方视为实验性功能，并不建议用在生产环境之中，先说明一下我的环境。</p>
+<p>服务器三台：node1.docker.com, node2.docker.com, node3.docker.com</p>
+<p>操作系统：CentOS 7.2-1511 64位 Docker 版本：1.12.6</p>
+<p>Kubernetes 版本：1.7.0</p>
+<p>部署方式：官方提供的 kubeadm 工具</p>
+<h2 id="准备-linux">准备 Linux<a class="anchor" href="#%e5%87%86%e5%a4%87-linux">#</a></h2>
+<p>关于系统，我用的是 CentOS7.2，官方说的是只要 CentOS7 就可以，如果是 Ubuntu 的话，版本要在 Ubuntu 16.04 或以上，或者是 HypriotOS v1.0.1+ 系统，不过我没用过这个系统。。</p>
+<h2 id="安装-docker">安装 Docker<a class="anchor" href="#%e5%ae%89%e8%a3%85-docker">#</a></h2>
+<p>所有节点都需要做这个步骤，这里要提醒大家一下，如果你按照 Docker 官网给出的方式，通过官方提供的 repo 源安装了最新版的 Docker，最好卸载掉，然后重新安装 1.12.x 版本的 Docker，否则后导致后面初始化 K8s 时失败，我已经在这个环节上浪费掉很多时间了，，k8s 官方说 Docker-1.13.x 也是可以的，但我没有试过，，所以正确的安装姿势是，用 CentosOS 7.2 自带的 repo 源来安装，如果你的系统中有 /etc/yum.repos.d/docker.repo 这个文件的话，请移除，然后执行：</p>
+<pre tabindex="0"><code>yum install docker-1.12.6 -y</code></pre><p>如果你的系统自带的源中没有找到 docker，那可以尝试从 Docker 官网安装，但一定要是 1.12.x 的 Docker 版本，请参考<a href="https://docs.docker.com/engine/installation/linux/docker-ce/centos/#install-using-the-repository">Docker 官方文档</a>。</p>
+<p>安装完成后先不启动。</p>
+<h2 id="关于网络">关于网络<a class="anchor" href="#%e5%85%b3%e4%ba%8e%e7%bd%91%e7%bb%9c">#</a></h2>
+<p>k8s 在初次启动时会下载很多镜像，不过这只是针对 kubeadm 这种安装方式，它把 k8s 的各个模块全部以镜像的方式运行起来，如果全部用二进制码安装的话，是不需要这些镜像的。。那么下载镜像会有什么问题呢？问题大了，这些镜像是在 google 服务器上的，国内连接不到，这就需要读者自行搭梯子了，一般来讲这是必须的，因为每次使用 kubeadm 创建集群时它都会下载最新版本的镜像，所以提前把镱像下载这种方法并不凑效，搭梯子具体方法这里就不讨论了，我就假设你已经有自己的代理服务器了，它的址是：1.2.3.4:8000，这时需要在你的 ~/.bashrc 中加入三个变量，如下：</p>
+<pre tabindex="0"><code>echo &#39;export HTTP_PROXY=http://1.2.3.4:8000&#39; &gt;&gt; ~/.bashrc
+echo &#39;export HTTPS_PROXY=http://1.2.3.4:8000&#39; &gt;&gt; ~/.bashrc
+echo &#39;export no_proxy=&#34;127.0.0.1,node1.docker.com&#34;&#39; &gt;&gt; ~/.bashrc
+source .bashrc</code></pre><p>使用 <code>ping google.com</code> 测试一下，如果能连接到 google 的话，恭喜你！已经成功一半了，，接下来是为 Docker 设置代理，光设置上面那些对 Docker 不生效的，方法很简单：</p>
+<pre tabindex="0"><code>mkdir -p /etc/systemd/system/docker.service.d    #先创建一个目录
+cat &gt; /etc/systemd/system/docker.service.d/http-proxy.conf &lt;&lt;-EOF
+[Service]
+Environment=&#34;HTTP_PROXY=http://10.100.124.236:8118&#34; &#34;HTTPS_PROXY=https://10.100.124.236:8118&#34; &#34;NO_PROXY=127.0.0.1,docker.io&#34;
+EOF</code></pre><p>这时就可以启动 Docker 了：</p>
+<pre tabindex="0"><code>systemctl start docker &amp;&amp; docker info</code></pre><h2 id="安装-kubectl">安装 kubectl<a class="anchor" href="#%e5%ae%89%e8%a3%85-kubectl">#</a></h2>
+<p>执行以下两条命令来安装 kubectl</p>
+<pre tabindex="0"><code>curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.7.0/bin/linux/amd64/kubectl
+chmod +x ./kubectl &amp;&amp; cp ./kubectl /usr/local/bin/kubectl</code></pre><h2 id="安装-kubeadm-和其它组件">安装 kubeadm 和其它组件<a class="anchor" href="#%e5%ae%89%e8%a3%85-kubeadm-%e5%92%8c%e5%85%b6%e5%ae%83%e7%bb%84%e4%bb%b6">#</a></h2>
+<p>这一步没有什么特别要注意的地方，唯一可能失败的原因就是代理没配置好，</p>
+<pre tabindex="0"><code>cat &lt;&lt;EOF &gt; /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+setenforce 0
+yum install kubelet-1.7.0 kubeadm-1.7.0 kubectl-1.7.0 kubernetes-cni-0.5.1 -y
+systemctl enable kubelet &amp;&amp; systemctl start kubelet</code></pre><h2 id="使用-kubeadm-初始化主节点">使用 kubeadm 初始化主节点<a class="anchor" href="#%e4%bd%bf%e7%94%a8-kubeadm-%e5%88%9d%e5%a7%8b%e5%8c%96%e4%b8%bb%e8%8a%82%e7%82%b9">#</a></h2>
+<p>这一步是关键，成败就在此一举了，开始之前还是先试一下网络是否 OK ，然后就开始初始化主节点吧：</p>
+<pre tabindex="0"><code>[root@blog ~]# kubeadm init
+[kubeadm] WARNING: kubeadm is in beta, please do not use it for production clusters.
+[init] Using Kubernetes version: v1.7.0
+[init] Using Authorization modes: [Node RBAC]
+[preflight] Running pre-flight checks
+[preflight] Starting the kubelet service
+[certificates] Generated CA certificate and key.
+[certificates] Generated API server certificate and key.
+[certificates] API Server serving cert is signed for DNS names [kubeadm-master kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local] and IPs [10.96.0.1 10.138.0.4]
+[certificates] Generated API server kubelet client certificate and key.
+[certificates] Generated service account token signing key and public key.
+[certificates] Generated front-proxy CA certificate and key.
+[certificates] Generated front-proxy client certificate and key.
+[certificates] Valid certificates and keys now exist in &#34;/etc/kubernetes/pki&#34;
+[kubeconfig] Wrote KubeConfig file to disk: &#34;/etc/kubernetes/admin.conf&#34;
+[kubeconfig] Wrote KubeConfig file to disk: &#34;/etc/kubernetes/kubelet.conf&#34;
+[kubeconfig] Wrote KubeConfig file to disk: &#34;/etc/kubernetes/controller-manager.conf&#34;
+[kubeconfig] Wrote KubeConfig file to disk: &#34;/etc/kubernetes/scheduler.conf&#34;
+[apiclient] Created API client, waiting for the control plane to become ready
+[apiclient] All control plane components are healthy after 16.502136 seconds
+[token] Using token: &lt;token&gt;
+[apiconfig] Created RBAC rules
+[addons] Applied essential addon: kube-proxy
+[addons] Applied essential addon: kube-dns
+ 
+Your Kubernetes master has initialized successfully!
+ 
+To start using your cluster, you need to run (as a regular user):
+ 
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+ 
+You should now deploy a pod network to the cluster.
+Run &#34;kubectl apply -f [podnetwork].yaml&#34; with one of the options listed at:
+  http://kubernetes.io/docs/admin/addons/
+ 
+You can now join any number of machines by running the following on each node
+as root:
+ 
+  kubeadm join --token c09068.cc1f3e78a73d9de6 1.2.3.4:6443</code></pre><p>如果看到以上输出就表示成功了，这时先把最后一行复制到其它地方记下来。</p>
+<p>这时很多人是在 <code>[apiclient] Created API client, waiting for the control plane to become ready</code> 这一步卡住了，第一个原因是就上面说到的网络，第二个原因就是 Docker 版本跟 k8s 不兼容，所以最好直接安装 1.12.6 版本。还有如果安装失败需要再次执行 <code>kubeadm init</code> 的话，需要先执行 <code>kubeadm reset</code> 来清理一下环境。</p>
+<p>上面输出中提示需要我们手动做一些操作：</p>
+<pre tabindex="0"><code>mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config</code></pre><p>还有一条命令，它可以让主节点即作为主节点也作为子节点，也一起执行一下吧：</p>
+<pre tabindex="0"><code>kubectl taint nodes --all node-role.kubernetes.io/master-</code></pre><h2 id="安装-pod-网络">安装 pod 网络<a class="anchor" href="#%e5%ae%89%e8%a3%85-pod-%e7%bd%91%e7%bb%9c">#</a></h2>
+<p>这一步是为集群搭建一个全局的网络环境，这样所有的 Docker 容器就可以跨物理机相互通信了，k8s 支持很多种全局网络，刚开始我用的是 flannel，拆腾半天还是不行，后来换成 weave 网络很容易就搭建成功了，命令如下：</p>
+<pre tabindex="0"><code>kubectl apply -n kube-system -f &#34;https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d &#39;\n&#39;)&#34;</code></pre><p>这时需要等一会，因为它需要下载几个相关镜像，通过以下命令来看它是否安装成功：</p>
+<pre tabindex="0"><code>[root@blog ~]# kubectl get pods --all-namespaces 
+NAMESPACE     NAME                                         READY     STATUS    RESTARTS   AGE
+kube-system   etcd-node1.docker.com                        1/1       Running   0          1h
+kube-system   kube-apiserver-node1.docker.com              1/1       Running   0          1h
+kube-system   kube-controller-manager-node1.docker.com     1/1       Running   0          1h
+kube-system   kube-dns-2425271678-56l1g                    0/3       Pending   0          1h
+kube-system   kube-proxy-s3vfd                             1/1       Running   0          1h
+kube-system   kube-scheduler-node1.docker.com              1/1       Running   0          1h
+kube-system   weave-net-pwm3d                              2/2       Running   0          38s</code></pre><p>这时如果看到 weave-net-* 这一行后面是 2/2 就表示创建成功了！如果等了很久还没有成功，可以通过以下命令查看原因：</p>
+<pre tabindex="0"><code>kubectl describe -f &#34;https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d &#39;\n&#39;)&#34;</code></pre><h2 id="加入其它节点">加入其它节点<a class="anchor" href="#%e5%8a%a0%e5%85%a5%e5%85%b6%e5%ae%83%e8%8a%82%e7%82%b9">#</a></h2>
+<p>这里需要注意的是，先确认其它两台机器，也要主同节点一样，安装好 Docker、kubectl、kubelet、kubeadm 等等，然后要把主节点上的所有镜像同步到其它机器上，可以<a href="/articles/docker-registry-deploy-manage">自己搭一个私有镜像仓库</a>来同步，或者将主节点上的所有镜像通过 docker save 命令导出，然后通过 scp 发通到其它机器，再通过 docker load 命令导入。</p>
+<p>镜像同步完成后，在 <code>node2.docker.com</code> 和 <code>node3.docker.com</code> 主机上执行命令刚才记下来那条命令，就可以将其它机器与主节点组成一个集群了，如下：</p>
+<pre tabindex="0"><code>kubeadm join --token c09068.cc1f3e78a73d9de6 1.2.3.4:6443</code></pre><p>执行完毕后，在主节点上执行以下命令查看集群中的节点：</p>
+<pre tabindex="0"><code>[root@blog ~]# kubectl get node
+NAME                 STATUS    AGE       VERSION
+node1.docker.com     Ready     8d        v1.7.0
+node2.docker.com     Ready     8d        v1.7.0
+node3.docker.com     Ready     8d        v1.7.0</code></pre><p>然后查看 k8s 所有模块是否都运行正常：</p>
+<pre tabindex="0"><code>[root@blog ~]# kubectl get pods --all-namespaces
+NAMESPACE     NAME                                         READY     STATUS    RESTARTS   AGE
+kube-system   etcd-node1.docker.com                        1/1       Running   1          8d
+kube-system   kube-apiserver-node1.docker.com              1/1       Running   1          8d
+kube-system   kube-controller-manager-node1.docker.com     1/1       Running   1          8d
+kube-system   kube-dns-2425271678-56l1g                    3/3       Running   3          8d
+kube-system   kube-proxy-7s7bg                             1/1       Running   0          8d
+kube-system   kube-proxy-s3vfd                             1/1       Running   1          8d
+kube-system   kube-proxy-zv4l6                             1/1       Running   0          8d
+kube-system   kube-scheduler-node1.docker.com              1/1       Running   1          8d
+kube-system   weave-net-pwm3d                              2/2       Running   3          8d
+kube-system   weave-net-tp1dz                              2/2       Running   0          8d
+kube-system   weave-net-zz2fm                              2/2       Running   0          8d</code></pre><p>这时应该看到三个 <code>kube-proxy</code> 与三个 <code>weave-net</code> 相关的 POD，并且 READY 那一列是全部在运行状态才对。</p>
+<h2 id="安装-dashboard">安装 Dashboard<a class="anchor" href="#%e5%ae%89%e8%a3%85-dashboard">#</a></h2>
+<p>官方提供的安装方式有点问题，我们先把要用到的 yaml 文件下载下来，对其做一点改动：</p>
+<pre tabindex="0"><code>wget https://git.io/kube-dashboard</code></pre><p>这时会得到一个 <code>kubernetes-dashboard.yaml</code> 文件，我们打开它，在最后的 Service 定义里，将其 9090 端口映射出来：</p>
+<pre tabindex="0"><code>[root@blog ~]# vim kubernetes-dashboard.yaml
+...
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  externalIPs:
+  - &#34;1.2.3.4&#34;
+  type: NodePort
+  ports:
+  - port: 9090
+    targetPort: 9090
+  selector:
+    k8s-app: kubernetes-dashboard
+...</code></pre><p>然后安装它：</p>
+<pre tabindex="0"><code>kubectl create -f kubernetes-dashboard.yaml</code></pre><p>然后用浏览器访问：<code>http://1.2.3.4:9090</code></p>
+<p>到这里 k8s 的部署就全部完成了，接下来你可以定义自己的各种 yaml 文件来创建服务。</p>
+<p>-End-</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/kubernetes/kubeedge-code.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="KubeEdge源码分析" />
+        <span>KubeEdge源码分析</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/kubernetes/kubernetes-quick-deloy.html" class="flex align-center">
+        <span>k8s 快速部署 1.5</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="k8s 快速部署 1.5" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#环境说明">环境说明</a></li>
+    <li><a href="#准备-linux">准备 Linux</a></li>
+    <li><a href="#安装-docker">安装 Docker</a></li>
+    <li><a href="#关于网络">关于网络</a></li>
+    <li><a href="#安装-kubectl">安装 kubectl</a></li>
+    <li><a href="#安装-kubeadm-和其它组件">安装 kubeadm 和其它组件</a></li>
+    <li><a href="#使用-kubeadm-初始化主节点">使用 kubeadm 初始化主节点</a></li>
+    <li><a href="#安装-pod-网络">安装 pod 网络</a></li>
+    <li><a href="#加入其它节点">加入其它节点</a></li>
+    <li><a href="#安装-dashboard">安装 Dashboard</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="web应用开发#
+编写一个基于安全协议的WEB服务器，并将80端口重定向到443端口。
+创建一个服务端#
+package main
+
+func main() {
+	// 指定证书文件并启动服务
+	s := &amp;http.Server{Addr: &#34;:443&#34;, Handler: buildMux()}
+	go s.ListenAndServeTLS(&#34;/opt/ssl/cert.pem&#34;, &#34;/opt/ssl/privkey.pem&#34;)
+
+	// 再创建一个监听在80端口的Server，它负责把80上的所有请求重定向到443端口
+	s80 := &amp;http.Server{Addr: &#34;:80&#34;, Handler: http.HandlerFunc(redirect80), ErrorLog: ctx.GetLogger()}
+	go s80.ListenAndServe()
+
+	// 创建一个channel，用来监听kill信号
+	stop := make(chan string, 1)
+	defer close(stop)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	&lt;-stop
+	
+	s.Shutdown(context.Background())
+	s80.Shutdown(context.Background())
+}
+
+func redirect80(w http.ResponseWriter, r *http.Request) {
+        target := &#34;https://&#34; &#43; r.Host &#43; r.URL.Path
+        if len(r.URL.RawQuery) &gt; 0 {
+                target &#43;= &#34;?&#34; &#43; r.URL.RawQuery
+        }
+
+        http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}URI匹配规则#
+下面代码是向ServerMux注册一个Handler：">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/golang/golang-tls-web.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="web应用开发# 编写一个基于安全协议的WEB服务器，并将80端口重定向到443端口。
+创建一个服务端# package main func main() { // 指定证书文件并启动服务 s := &amp;http.Server{Addr: &#34;:443&#34;, Handler: buildMux()} go s.ListenAndServeTLS(&#34;/opt/ssl/cert.pem&#34;, &#34;/opt/ssl/privkey.pem&#34;) // 再创建一个监听在80端口的Server，它负责把80上的所有请求重定向到443端口 s80 := &amp;http.Server{Addr: &#34;:80&#34;, Handler: http.HandlerFunc(redirect80), ErrorLog: ctx.GetLogger()} go s80.ListenAndServe() // 创建一个channel，用来监听kill信号 stop := make(chan string, 1) defer close(stop) signal.Notify(sig, os.Interrupt, syscall.SIGTERM) &lt;-stop s.Shutdown(context.Background()) s80.Shutdown(context.Background()) } func redirect80(w http.ResponseWriter, r *http.Request) { target := &#34;https://&#34; &#43; r.Host &#43; r.URL.Path if len(r.URL.RawQuery) &gt; 0 { target &#43;= &#34;?&#34; &#43; r.URL.RawQuery } http.Redirect(w, r, target, http.StatusTemporaryRedirect) }URI匹配规则# 下面代码是向ServerMux注册一个Handler：">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="golang">
+<title>web应用开发 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/golang/golang-tls-web.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-golang">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle" checked />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="active">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle"  />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>web应用开发</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#创建一个服务端">创建一个服务端</a></li>
+    <li><a href="#uri匹配规则">URI匹配规则</a></li>
+    <li><a href="#参数解析规则">参数解析规则</a></li>
+    <li><a href="#请求体只能被读取一次">请求体只能被读取一次</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="web应用开发">web应用开发<a class="anchor" href="#web%e5%ba%94%e7%94%a8%e5%bc%80%e5%8f%91">#</a></h1>
+<p>编写一个基于安全协议的WEB服务器，并将80端口重定向到443端口。</p>
+<h2 id="创建一个服务端">创建一个服务端<a class="anchor" href="#%e5%88%9b%e5%bb%ba%e4%b8%80%e4%b8%aa%e6%9c%8d%e5%8a%a1%e7%ab%af">#</a></h2>
+<pre tabindex="0"><code>package main
+
+func main() {
+	// 指定证书文件并启动服务
+	s := &amp;http.Server{Addr: &#34;:443&#34;, Handler: buildMux()}
+	go s.ListenAndServeTLS(&#34;/opt/ssl/cert.pem&#34;, &#34;/opt/ssl/privkey.pem&#34;)
+
+	// 再创建一个监听在80端口的Server，它负责把80上的所有请求重定向到443端口
+	s80 := &amp;http.Server{Addr: &#34;:80&#34;, Handler: http.HandlerFunc(redirect80), ErrorLog: ctx.GetLogger()}
+	go s80.ListenAndServe()
+
+	// 创建一个channel，用来监听kill信号
+	stop := make(chan string, 1)
+	defer close(stop)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	&lt;-stop
+	
+	s.Shutdown(context.Background())
+	s80.Shutdown(context.Background())
+}
+
+func redirect80(w http.ResponseWriter, r *http.Request) {
+        target := &#34;https://&#34; + r.Host + r.URL.Path
+        if len(r.URL.RawQuery) &gt; 0 {
+                target += &#34;?&#34; + r.URL.RawQuery
+        }
+
+        http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}</code></pre><h2 id="uri匹配规则">URI匹配规则<a class="anchor" href="#uri%e5%8c%b9%e9%85%8d%e8%a7%84%e5%88%99">#</a></h2>
+<p>下面代码是向ServerMux注册一个Handler：</p>
+<pre tabindex="0"><code>mux.HandleFunc(&#34;/users&#34;, user)</code></pre><p>理想情况是当访问<code>/users/jack</code>时执行<code>user</code>函数，而实事上你会得到一个404，它只能通过<code>/users</code>被访问，为了达到理想结果，正确的写法应该是下面这样：</p>
+<pre tabindex="0"><code>mux.HandleFunc(&#34;/users/&#34;, user)</code></pre><p>这样一来，当我们访问<code>/users/jack</code>时，服务器会先匹配<code>/users/jack</code>，如果没有该路径则会查找<code>/users/</code>，如果还没有匹配到则查找<code>/</code>，如果还没有就404。</p>
+<h2 id="参数解析规则">参数解析规则<a class="anchor" href="#%e5%8f%82%e6%95%b0%e8%a7%a3%e6%9e%90%e8%a7%84%e5%88%99">#</a></h2>
+<pre tabindex="0"><code>func (m *Manager) myHandler(w http.ResponseWriter, r *http.Request) {
+	println(r.FormValue(&#34;name&#34;)) // jack
+	println(r.PostFormValue(&#34;phone&#34;)) // 空
+
+	resume, _ := ioutil.ReadAll(r.Body)
+	println(string(resume)) // user=jack&amp;age=18
+}</code></pre><ol>
+<li>go中有2个函数用于获取参数，<code>FormValue()</code>用于解析url和body中的参数，<code>PostFormValue()</code>只解析body中的参数而不解析url中的参数</li>
+<li>当客户端设置<code>Content-Type</code>的值为<code>application/x-www-form-urlencoded</code>时，body中的数据会被解码一次，然后当作键值对解析，最后保存在map结构中，当值为<code>application/json</code>或<code>application/octet-stream</code>等时，body中的原始数据不会被进行任何处理。</li>
+</ol>
+<h2 id="请求体只能被读取一次">请求体只能被读取一次<a class="anchor" href="#%e8%af%b7%e6%b1%82%e4%bd%93%e5%8f%aa%e8%83%bd%e8%a2%ab%e8%af%bb%e5%8f%96%e4%b8%80%e6%ac%a1">#</a></h2>
+<p>有时候我们会写这样的代码：</p>
+<pre tabindex="0"><code>func user(w http.ResponseWriter, r *http.Request) {
+	// 先测试一下r.Body中有没有值
+	body := ioutil.ReadAll(r.Body)
+	println(body)
+	
+        method := r.Method
+        if method == POST {
+		user := r.FormValue(&#34;user&#34;)
+                println(user)
+        }
+}</code></pre><p>然后发起请求：</p>
+<pre tabindex="0"><code>curl -H &#34;Content-Type: application/x-www-form-urlencoded&#34; -d &#39;user=jack&#39; localhost/users/</code></pre><p>结果是在第一次获取请求体时没问题，但<code>r.FormValue(&quot;user&quot;)</code>返回的值为空，为什么？这是因为<code>r.Body</code>本身是个输入流，即然是流当然是有指针的，当第一次从流中读完数据后，流中的指针已经指向了流的最后，当执行<code>r.FormValue(&quot;user&quot;)</code>的时候，它会触发<code>r.ParseForm()</code>函数，进而再次从<code>r.Body</code>中读取数据并解析到<code>map</code>中供我们使用，但这时流中已经没有数据可以读了，自然也就得不到正确的结果。</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/golang/golang-regexp-performance.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="正则性能优化" />
+        <span>正则性能优化</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/golang/golang-web-and-curl.html" class="flex align-center">
+        <span>解析客户端参数</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="解析客户端参数" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#创建一个服务端">创建一个服务端</a></li>
+    <li><a href="#uri匹配规则">URI匹配规则</a></li>
+    <li><a href="#参数解析规则">参数解析规则</a></li>
+    <li><a href="#请求体只能被读取一次">请求体只能被读取一次</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

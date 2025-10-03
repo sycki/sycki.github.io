@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="配置direct-lvm#
+关于 Docker 存储引擎#
+在 CentOS 上安装 Docker 时，默认的存储方式为 devicemapper，而 devicemapper 又有两种模式，默认为 loop-lvm，也就是挂载 loop 设备的方式，在安装 Doccker 后，它会挂载两个 loop 设备用作存储，这两个 loop 设备对应 Docker 安装目录下的两个文件，如下：
+[user@ser0 ~]$ sudo losetup -a
+/dev/loop0: [64770]:2164801071 (/var/lib/docker/devicemapper/devicemapper/data)
+/dev/loop1: [64770]:2164801072 (/var/lib/docker/devicemapper/devicemapper/metadata)看下它们的大小：
+[user@ser0 ~]$ sudo ls -hls /var/lib/docker/devicemapper/devicemapper/
+total 52G
+52G -rw-------. 1 root root 100G Jan 7 07:28 data
+54M -rw-------. 1 root root 2.0G Jan 7 15:28 metadata它的优点是不用过多配置，开箱即用，但性能很差，默认可使用的空间是100G，在使用时有各种问题，官方不推荐这种方式用在生产中，另一种方式是direct-lvm，性能好且稳定，本文将介绍如何配置它。
+基本原理#
+准备一块单独的磁盘给Docker存储用，逻辑物理均可，用lvm2工具将这块磁盘分为两个逻辑卷，再将这两个逻辑卷转换成thin pool类型，然后配置给Docker。
+开始配置#
+查看当前存储引擎：
+[user@ser0 ~]$ sudo docker info
+...
+Server Version: 1.12.1 Storage Driver: devicemapper
+Pool Name: docker-253:2-6442838537-pool     # 这里表示当前是loop-lvm模式
+Pool Blocksize: 65.54 kB
+Base Device Size: 53.69 GB
+Backing Filesystem: xfs
+Data file: /dev/loop0
+Metadata file: /dev/loop1
+Data Space Used: 55.5 GB
+Data Space Total: 107.4 GB                  # 默认只有100G可用空间，届时将无法创建容器
+Data Space Available: 51.88 GB
+Metadata Space Used: 33.37 MB
+Metadata Space Total: 2.147 GB
+Metadata Space Available: 2.114 GB
+Thin Pool Minimum Free Space: 10.74 GB
+Udev Sync Supported: true
+...查看磁盘使用情况">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/kubernetes/docker-config-direct-lvm.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="配置direct-lvm# 关于 Docker 存储引擎# 在 CentOS 上安装 Docker 时，默认的存储方式为 devicemapper，而 devicemapper 又有两种模式，默认为 loop-lvm，也就是挂载 loop 设备的方式，在安装 Doccker 后，它会挂载两个 loop 设备用作存储，这两个 loop 设备对应 Docker 安装目录下的两个文件，如下：
+[user@ser0 ~]$ sudo losetup -a /dev/loop0: [64770]:2164801071 (/var/lib/docker/devicemapper/devicemapper/data) /dev/loop1: [64770]:2164801072 (/var/lib/docker/devicemapper/devicemapper/metadata)看下它们的大小：
+[user@ser0 ~]$ sudo ls -hls /var/lib/docker/devicemapper/devicemapper/ total 52G 52G -rw-------. 1 root root 100G Jan 7 07:28 data 54M -rw-------. 1 root root 2.0G Jan 7 15:28 metadata它的优点是不用过多配置，开箱即用，但性能很差，默认可使用的空间是100G，在使用时有各种问题，官方不推荐这种方式用在生产中，另一种方式是direct-lvm，性能好且稳定，本文将介绍如何配置它。
+基本原理# 准备一块单独的磁盘给Docker存储用，逻辑物理均可，用lvm2工具将这块磁盘分为两个逻辑卷，再将这两个逻辑卷转换成thin pool类型，然后配置给Docker。
+开始配置# 查看当前存储引擎：
+[user@ser0 ~]$ sudo docker info ... Server Version: 1.12.1 Storage Driver: devicemapper Pool Name: docker-253:2-6442838537-pool # 这里表示当前是loop-lvm模式 Pool Blocksize: 65.54 kB Base Device Size: 53.69 GB Backing Filesystem: xfs Data file: /dev/loop0 Metadata file: /dev/loop1 Data Space Used: 55.5 GB Data Space Total: 107.4 GB # 默认只有100G可用空间，届时将无法创建容器 Data Space Available: 51.88 GB Metadata Space Used: 33.37 MB Metadata Space Total: 2.147 GB Metadata Space Available: 2.114 GB Thin Pool Minimum Free Space: 10.74 GB Udev Sync Supported: true ...查看磁盘使用情况">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="kubernetes">
+<title>配置direct-lvm | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/kubernetes/docker-config-direct-lvm.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-kubernetes">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle" checked />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="active">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>配置direct-lvm</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#关于-docker-存储引擎">关于 Docker 存储引擎</a></li>
+    <li><a href="#基本原理">基本原理</a></li>
+    <li><a href="#开始配置">开始配置</a></li>
+    <li><a href="#参考">参考</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="配置direct-lvm">配置direct-lvm<a class="anchor" href="#%e9%85%8d%e7%bd%aedirect-lvm">#</a></h1>
+<h2 id="关于-docker-存储引擎">关于 Docker 存储引擎<a class="anchor" href="#%e5%85%b3%e4%ba%8e-docker-%e5%ad%98%e5%82%a8%e5%bc%95%e6%93%8e">#</a></h2>
+<p>在 CentOS 上安装 Docker 时，默认的存储方式为 devicemapper，而 devicemapper 又有两种模式，默认为 loop-lvm，也就是挂载 loop 设备的方式，在安装 Doccker 后，它会挂载两个 loop 设备用作存储，这两个 loop 设备对应 Docker 安装目录下的两个文件，如下：</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo losetup -a
+/dev/loop0: [64770]:2164801071 (/var/lib/docker/devicemapper/devicemapper/data)
+/dev/loop1: [64770]:2164801072 (/var/lib/docker/devicemapper/devicemapper/metadata)</code></pre><p>看下它们的大小：</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo ls -hls /var/lib/docker/devicemapper/devicemapper/
+total 52G
+52G -rw-------. 1 root root 100G Jan 7 07:28 data
+54M -rw-------. 1 root root 2.0G Jan 7 15:28 metadata</code></pre><p>它的优点是不用过多配置，开箱即用，但性能很差，默认可使用的空间是100G，在使用时有各种问题，官方不推荐这种方式用在生产中，另一种方式是direct-lvm，性能好且稳定，本文将介绍如何配置它。</p>
+<h2 id="基本原理">基本原理<a class="anchor" href="#%e5%9f%ba%e6%9c%ac%e5%8e%9f%e7%90%86">#</a></h2>
+<p>准备一块单独的磁盘给Docker存储用，逻辑物理均可，用lvm2工具将这块磁盘分为两个逻辑卷，再将这两个逻辑卷转换成thin pool类型，然后配置给Docker。</p>
+<h2 id="开始配置">开始配置<a class="anchor" href="#%e5%bc%80%e5%a7%8b%e9%85%8d%e7%bd%ae">#</a></h2>
+<p>查看当前存储引擎：</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo docker info
+...
+Server Version: 1.12.1 Storage Driver: devicemapper
+Pool Name: docker-253:2-6442838537-pool     # 这里表示当前是loop-lvm模式
+Pool Blocksize: 65.54 kB
+Base Device Size: 53.69 GB
+Backing Filesystem: xfs
+Data file: /dev/loop0
+Metadata file: /dev/loop1
+Data Space Used: 55.5 GB
+Data Space Total: 107.4 GB                  # 默认只有100G可用空间，届时将无法创建容器
+Data Space Available: 51.88 GB
+Metadata Space Used: 33.37 MB
+Metadata Space Total: 2.147 GB
+Metadata Space Available: 2.114 GB
+Thin Pool Minimum Free Space: 10.74 GB
+Udev Sync Supported: true
+...</code></pre><p>查看磁盘使用情况</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo df -hT 
+文件系统                类型      容量  已用  可用 已用% 挂载点
+/dev/mapper/centos-root xfs        50G  842M   50G    2% /
+devtmpfs                devtmpfs   63G     0   63G    0% /dev
+tmpfs                   tmpfs      63G     0   63G    0% /dev/shm
+tmpfs                   tmpfs      63G  8.8M   63G    1% /run
+tmpfs                   tmpfs      63G     0   63G    0% /sys/fs/cgroup
+/dev/sda2               xfs       497M  123M  374M   25% /boot
+/dev/mapper/centos-home xfs       5.5T   33M  5.5T    1% /home
+tmpfs                   tmpfs      13G     0   13G    0% /run/user/0</code></pre><p>看来有一块磁盘是专门用来做数据分区的，即/dev/mapper/centos-home，而且来没有被使用，那我们就用它来配置 Docker 的 direct-lvm模式 了</p>
+<p>停掉 Docker服务，如果本机上有镜像的话，先push到 Docker Hub 或者自的私有仓库中，容器当然也一样。</p>
+<pre tabindex="0"><code>sudo systemctl stop docker</code></pre><p>卸载逻辑卷</p>
+<pre tabindex="0"><code>sudo umount /home</code></pre><p>删除逻辑卷，请一定备份好数据</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo lvdisplay
+...
+  --- Logical volume ---
+  LV Path                /dev/centos/home
+  LV Name                home
+  VG Name                centos
+  LV UUID                l0j4kt-eOu4-1fSh-WIqU-X4mN-SAmj-ThdaNO
+  LV Write Access        read/write
+  LV Creation host, time localhost, 2017-01-05 00:35:37 +0800
+  LV Status              available
+  $ sudo open                 1
+  LV Size                5.40 TiB
+  Current LE             1416435
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:2
+...</code></pre><p>这里看到它属于cetnos这个VG，然后删除它：</p>
+<pre tabindex="0"><code>sudo lvremove /dev/centos/home</code></pre><p>这时进入 /etc/fstab 查看 /dev/centos/home 这一行在不在了，如果还在，一定将 /dev/centos/home 这一行注释掉，否则系统将无法启动！！</p>
+<p>VG空间剩余量：</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo vgdisplay
+  --- Volume group ---
+  VG Name               centos
+  System ID             
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  21
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                4
+  Open LV               3
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               5.46 TiB
+  PE Size               4.00 MiB
+  Total PE              1430274
+  Alloc PE / Size       1430222 / 5.46 TiB
+  Free  PE / Size       1410256 / 5.30 TiB
+  VG UUID               W6gHFG-SVtL-wdck-amUk-SRHL-ct7h-Zv70Pd</code></pre><p>这里看到刚才那LV的容量都归centos这个VG了</p>
+<p>创建thin pool</p>
+<p>用centos中剩余的空间创建两个LV</p>
+<pre tabindex="0"><code>sudo lvcreate --wipesignatures y -n thinpool -l 90%VG centos
+sudo lvcreate --wipesignatures y -n thinpoolmeta -L 2G centos</code></pre><p>将两个 LV 合并为 thin pool</p>
+<pre tabindex="0"><code>sudo lvconvert -y --zero n -c 512K --thinpool centos/thinpool --poolmetadata centos/thinpoolmeta</code></pre><p>配置thin pool</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo vi /etc/lvm/profile/docker-thinpool.profile
+activation{
+    thin_pool_autoextend_threshold=80
+    thin_pool_autoextend_percent=20
+}</code></pre><p>使配置生效</p>
+<pre tabindex="0"><code>sudo lvchange --metadataprofile docker-thinpool centos/thinpool</code></pre><p>查看 thinpool 是否能监视到状态</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo lvs -o+seg_monitor
+  LV       VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  data     centos -wi-ao---- 469.00g                                                    
+  root     centos -wi-ao----  50.00g                                                    
+  swap     centos -wi-ao----  31.50g                                                    
+  thinpool centos twi-a-t---   4.91t             0.00   0.07   </code></pre><p>修改Docker配置</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo vi /usr/lib/systemd/system/docker.service
+...
+ExecStart=/usr/bin/dockerd \
+    --storage-driver=devicemapper \
+    --storage-opt=dm.thinpooldev=/dev/mapper/centos-thinpool \
+    --storage-opt=dm.use_deferred_removal=true \
+    --storage-opt=dm.use_deferred_deletion=true
+ExecReload=/bin/kill -s HUP $MAINPID
+...</code></pre><p>启动Docker服务，如果有以前的镜像数据必须删掉，所以先备份以前的数据：</p>
+<pre tabindex="0"><code>sudo mv /var/lib/docker /var/lib/docker.bak
+sudo systemclt start docker</code></pre><p>查看当前存储引擎：</p>
+<pre tabindex="0"><code>[user@ser0 ~]$ sudo docker info
+...
+Server Version: 1.12.5
+Storage Driver: devicemapper
+ Pool Name: centos-thinpool         # 这里是我们刚才创建的LV逻辑盘
+ Pool Blocksize: 524.3 kB
+ Base Device Size: 10.74 GB
+ Backing Filesystem: xfs
+ Data file: 
+ Metadata file: 
+ Data Space Used: 19.92 MB
+ Data Space Total: 5.399 TB         # 总大小也变了
+ Data Space Available: 5.399 TB
+ Metadata Space Used: 2.916 MB
+ Metadata Space Total: 4.295 GB
+ Metadata Space Available: 4.292 GB
+ Thin Pool Minimum Free Space: 539.9 GB
+ Udev Sync Supported: true
+...</code></pre><p>到这里 direct-lvm 配置就完成了</p>
+<h2 id="参考">参考<a class="anchor" href="#%e5%8f%82%e8%80%83">#</a></h2>
+<p><a href="http://blog.csdn.net/mycms5/article/details/27218935">LVM相关介绍</a></p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/kubernetes/docker-code-start-dockerd.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="DOCKER源码-启动流程" />
+        <span>DOCKER源码-启动流程</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/kubernetes/docker-dynamic-port-map.html" class="flex align-center">
+        <span>动态映射端口</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="动态映射端口" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#关于-docker-存储引擎">关于 Docker 存储引擎</a></li>
+    <li><a href="#基本原理">基本原理</a></li>
+    <li><a href="#开始配置">开始配置</a></li>
+    <li><a href="#参考">参考</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

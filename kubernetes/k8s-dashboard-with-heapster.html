@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="k8s 仪表盘与性能指标#
+安装Heapster#
+需要注意的地方就是镜像，如果官方的不能下载，可以选择国内的，共三个：
+docker pull kxdmmr/heapster-influxdb-amd64:v1.3.3
+docker pull kxdmmr/heapster-grafana-amd64:v4.4.3
+docker pull kxdmmr/heapster-amd64:v1.4.2然后去官方下载三个yaml文件：
+https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/influxdb
+还有一个关于RBAC的：
+https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/rbac
+修改文件内的镜像地址，然后通过kubectl create一次性创建它们。
+[root@node10 dashboard]# kubectl -n kube-system get pods
+NAME                                        READY     STATUS    RESTARTS   AGE
+heapster-7f776d4686-8nfz2                   1/1       Running   0          12d
+monitoring-grafana-64768ccd78-4tgmd         1/1       Running   0          12d
+monitoring-influxdb-84774b9644-z9m28        1/1       Running   0          12d安装Dashboard#
+下载yaml#
+下载官方的yaml文件：
+mkdir dashboard &amp;&amp; cd dashboard
+curl -O https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml修改镜像地址#
+如果你不能下载官方的镜像，可以选择国内镜像，将yaml文件内image: k8s.gcr这一行改为image: kxdmmr/kubernetes-dashboard-amd64:v1.8.1
+挂载证书到pod中#
+在默认的启动参数中指定了自动生成证书--auto-generate-certificates，但实际并不能正常提供https服务，我们可以指定为自己的证书。
+我们打算将证书以Secret的方法挂载到Pod中，所以先将证书和私钥编码成base64，至于证书和私钥的选择，你可以专门为dashboard生成一对，也可以用已经存在的，这里我用安装集群时的一对密钥作为示例：
+less /etc/kubernetes/ssl/kubernetes.pem | base64 -w 0
+less /etc/kubernetes/ssl/kubernetes-key.pem | base64 -w 0然后将得到的两个base64码放入yaml文件中的Secret中，给它增加一个data字段，如下：
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard-certs
+  namespace: kube-system
+type: Opaque
+data:
+  certfile: EZ6VVcwZWx0NC94Z.........(省略)
+  keyfile: LRVktLNCS0tLE9Qo=.........(省略)引用证书#
+这里需要修改dashboard的启动参数，也就是Deployment部分:
+Deployment.spec.template.spec.containers.args：">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/kubernetes/k8s-dashboard-with-heapster.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="k8s 仪表盘与性能指标# 安装Heapster# 需要注意的地方就是镜像，如果官方的不能下载，可以选择国内的，共三个：
+docker pull kxdmmr/heapster-influxdb-amd64:v1.3.3 docker pull kxdmmr/heapster-grafana-amd64:v4.4.3 docker pull kxdmmr/heapster-amd64:v1.4.2然后去官方下载三个yaml文件：
+https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/influxdb
+还有一个关于RBAC的：
+https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/rbac
+修改文件内的镜像地址，然后通过kubectl create一次性创建它们。
+[root@node10 dashboard]# kubectl -n kube-system get pods NAME READY STATUS RESTARTS AGE heapster-7f776d4686-8nfz2 1/1 Running 0 12d monitoring-grafana-64768ccd78-4tgmd 1/1 Running 0 12d monitoring-influxdb-84774b9644-z9m28 1/1 Running 0 12d安装Dashboard# 下载yaml# 下载官方的yaml文件：
+mkdir dashboard &amp;&amp; cd dashboard curl -O https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml修改镜像地址# 如果你不能下载官方的镜像，可以选择国内镜像，将yaml文件内image: k8s.gcr这一行改为image: kxdmmr/kubernetes-dashboard-amd64:v1.8.1
+挂载证书到pod中# 在默认的启动参数中指定了自动生成证书--auto-generate-certificates，但实际并不能正常提供https服务，我们可以指定为自己的证书。
+我们打算将证书以Secret的方法挂载到Pod中，所以先将证书和私钥编码成base64，至于证书和私钥的选择，你可以专门为dashboard生成一对，也可以用已经存在的，这里我用安装集群时的一对密钥作为示例：
+less /etc/kubernetes/ssl/kubernetes.pem | base64 -w 0 less /etc/kubernetes/ssl/kubernetes-key.pem | base64 -w 0然后将得到的两个base64码放入yaml文件中的Secret中，给它增加一个data字段，如下：
+apiVersion: v1 kind: Secret metadata: labels: k8s-app: kubernetes-dashboard name: kubernetes-dashboard-certs namespace: kube-system type: Opaque data: certfile: EZ6VVcwZWx0NC94Z.........(省略) keyfile: LRVktLNCS0tLE9Qo=.........(省略)引用证书# 这里需要修改dashboard的启动参数，也就是Deployment部分: Deployment.spec.template.spec.containers.args：">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="kubernetes">
+<title>k8s 仪表盘与性能指标 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/kubernetes/k8s-dashboard-with-heapster.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-kubernetes">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle" checked />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="active">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>k8s 仪表盘与性能指标</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#安装heapster">安装Heapster</a></li>
+    <li><a href="#安装dashboard">安装Dashboard</a>
+      <ul>
+        <li><a href="#下载yaml">下载yaml</a></li>
+        <li><a href="#修改镜像地址">修改镜像地址</a></li>
+        <li><a href="#挂载证书到pod中">挂载证书到pod中</a></li>
+        <li><a href="#引用证书">引用证书</a></li>
+        <li><a href="#暴露端口">暴露端口</a></li>
+      </ul>
+    </li>
+    <li><a href="#创建">创建</a></li>
+    <li><a href="#需要注意的问题">需要注意的问题</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="k8s-仪表盘与性能指标">k8s 仪表盘与性能指标<a class="anchor" href="#k8s-%e4%bb%aa%e8%a1%a8%e7%9b%98%e4%b8%8e%e6%80%a7%e8%83%bd%e6%8c%87%e6%a0%87">#</a></h1>
+<h2 id="安装heapster">安装Heapster<a class="anchor" href="#%e5%ae%89%e8%a3%85heapster">#</a></h2>
+<p>需要注意的地方就是镜像，如果官方的不能下载，可以选择国内的，共三个：</p>
+<pre tabindex="0"><code>docker pull kxdmmr/heapster-influxdb-amd64:v1.3.3
+docker pull kxdmmr/heapster-grafana-amd64:v4.4.3
+docker pull kxdmmr/heapster-amd64:v1.4.2</code></pre><p>然后去官方下载三个yaml文件：</p>
+<p><a href="https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/influxdb">https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/influxdb</a></p>
+<p>还有一个关于RBAC的：</p>
+<p><a href="https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/rbac">https://github.com/kubernetes/heapster/tree/master/deploy/kube-config/rbac</a></p>
+<p>修改文件内的镜像地址，然后通过kubectl create一次性创建它们。</p>
+<pre tabindex="0"><code>[root@node10 dashboard]# kubectl -n kube-system get pods
+NAME                                        READY     STATUS    RESTARTS   AGE
+heapster-7f776d4686-8nfz2                   1/1       Running   0          12d
+monitoring-grafana-64768ccd78-4tgmd         1/1       Running   0          12d
+monitoring-influxdb-84774b9644-z9m28        1/1       Running   0          12d</code></pre><h2 id="安装dashboard">安装Dashboard<a class="anchor" href="#%e5%ae%89%e8%a3%85dashboard">#</a></h2>
+<h3 id="下载yaml">下载yaml<a class="anchor" href="#%e4%b8%8b%e8%bd%bdyaml">#</a></h3>
+<p>下载<a href="https://github.com/kubernetes/dashboard">官方</a>的yaml文件：</p>
+<pre tabindex="0"><code>mkdir dashboard &amp;&amp; cd dashboard
+curl -O https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml</code></pre><h3 id="修改镜像地址">修改镜像地址<a class="anchor" href="#%e4%bf%ae%e6%94%b9%e9%95%9c%e5%83%8f%e5%9c%b0%e5%9d%80">#</a></h3>
+<p>如果你不能下载官方的镜像，可以选择国内镜像，将yaml文件内<code>image: k8s.gcr</code>这一行改为<code>image: kxdmmr/kubernetes-dashboard-amd64:v1.8.1</code></p>
+<h3 id="挂载证书到pod中">挂载证书到pod中<a class="anchor" href="#%e6%8c%82%e8%bd%bd%e8%af%81%e4%b9%a6%e5%88%b0pod%e4%b8%ad">#</a></h3>
+<p>在默认的启动参数中指定了自动生成证书<code>--auto-generate-certificates</code>，但实际并不能正常提供https服务，我们可以指定为自己的证书。</p>
+<p>我们打算将证书以Secret的方法挂载到Pod中，所以先将证书和私钥编码成base64，至于证书和私钥的选择，你可以专门为dashboard生成一对，也可以用已经存在的，这里我用安装集群时的一对密钥作为示例：</p>
+<pre tabindex="0"><code>less /etc/kubernetes/ssl/kubernetes.pem | base64 -w 0
+less /etc/kubernetes/ssl/kubernetes-key.pem | base64 -w 0</code></pre><p>然后将得到的两个base64码放入yaml文件中的Secret中，给它增加一个data字段，如下：</p>
+<pre tabindex="0"><code>apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard-certs
+  namespace: kube-system
+type: Opaque
+data:
+  certfile: EZ6VVcwZWx0NC94Z.........(省略)
+  keyfile: LRVktLNCS0tLE9Qo=.........(省略)</code></pre><h3 id="引用证书">引用证书<a class="anchor" href="#%e5%bc%95%e7%94%a8%e8%af%81%e4%b9%a6">#</a></h3>
+<p>这里需要修改dashboard的启动参数，也就是Deployment部分:
+<code>Deployment.spec.template.spec.containers.args</code>：</p>
+<pre tabindex="0"><code>args:
+  # - --auto-generate-certificates
+  - --heapster-host=http://heapster.kube-system.svc.cluster.local.:80
+  - --tls-cert-file=certfile
+  - --tls-key-file=keyfile</code></pre><p>说明：</p>
+<ol>
+<li>先将<code>--auto-generate-certificates</code>这个选项去掉</li>
+<li>指定heapster服务的访问方式，hostname和ip的方式都可以，如果不指定是默认自动获取的，但我在使用的时候发现日志里一直报错，说访问heapster时连接超时。</li>
+<li>指定我们自己的证书和私钥，因为这个Secret默认已经被以Volume的方式挂载到了<code>/certs</code>这个位置，所以我们可以直接指定，注意不用加<code>/certs</code>这个前缀。</li>
+</ol>
+<h3 id="暴露端口">暴露端口<a class="anchor" href="#%e6%9a%b4%e9%9c%b2%e7%ab%af%e5%8f%a3">#</a></h3>
+<p>将配置文件中的Service改为NodePort类型：</p>
+<pre tabindex="0"><code>kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  type: NodePort
+  externalIPs:
+  - &#34;10.100.100.101&#34;
+  ports:
+    - port: 443
+      targetPort: 8443
+  selector:
+    k8s-app: kubernetes-dashboard</code></pre><h2 id="创建">创建<a class="anchor" href="#%e5%88%9b%e5%bb%ba">#</a></h2>
+<pre tabindex="0"><code>kubectl create -f kubernetes-dashboard.yaml</code></pre><p>现在你可以通过<code>https://10.100.100.101/</code>来访问你的仪表盘了，如果显示了要求登录的界面直接点skip即可，并且可以看到每个namespace的资源使用情况。</p>
+<h2 id="需要注意的问题">需要注意的问题<a class="anchor" href="#%e9%9c%80%e8%a6%81%e6%b3%a8%e6%84%8f%e7%9a%84%e9%97%ae%e9%a2%98">#</a></h2>
+<p>如果遇到任何问题请先查看相应pod的运行日志，比如dashboard不能启动，应该先用<code>kubectl describe</code>查看apiserver创建pod时发生了什么，然后是通过<code>kubectl log</code>查看dashboard的启动日志，它可以看到dashboard所有工作日志。</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/kubernetes/k8s-cri.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="k8s CRI" />
+        <span>k8s CRI</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/kubernetes/k8s-expose-service.html" class="flex align-center">
+        <span>k8s 暴露服务</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="k8s 暴露服务" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#安装heapster">安装Heapster</a></li>
+    <li><a href="#安装dashboard">安装Dashboard</a>
+      <ul>
+        <li><a href="#下载yaml">下载yaml</a></li>
+        <li><a href="#修改镜像地址">修改镜像地址</a></li>
+        <li><a href="#挂载证书到pod中">挂载证书到pod中</a></li>
+        <li><a href="#引用证书">引用证书</a></li>
+        <li><a href="#暴露端口">暴露端口</a></li>
+      </ul>
+    </li>
+    <li><a href="#创建">创建</a></li>
+    <li><a href="#需要注意的问题">需要注意的问题</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

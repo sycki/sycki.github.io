@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Java - NIO框架#
+什么是 NIO#
+为了弥补 Java IO 的不足，Java 从 1.4 版本开始引入了 NIO 框架，也就是说 NIO 是一套新的 IO 框架，一般解释为 Non-blocking IO，有时也解释为 New IO。它可以在实现高并发服务器的同时占用很少的资源。
+传统 IO 框架#
+对于传统的 IO 框架，NIO 的优势主要体现在对请求的处理上，下面我们先来看看用传统 IO 怎样建立一个 TCP 连接。 首先创建服务端，并等待新的连接，下面是伪代码：
+ServerSocket ser = new ServerSocket(8081);
+ 
+while (true) {
+     
+    Socket sk = ser.accept();
+ 
+    startNewThread(sk);
+ 
+}
+第一行是创建一个服务端对象，并准备监听本机的 8081 端口。
+Socket sk = ser.accept(); 表示开始监听新的连接请求，这行代码是阻塞式的，直到有新的客户端连接过来，会返回一个新 Socket 连接对象。
+startNewThread() 方法是处理 Socket 连接的主要逻辑，它会创建一个新的线程并立即返回，该线程的工作是一直监听客户端发来的数据，然后作出回应。
+这时又会回到循环的项部，继续等待新的连接，这就是一个服务端了。
+
+缺点：乍一看没什么问题，一切都很美好不是吗，但是当连接的请求多了呢，比如几万或者几百万？这样的话就会有几百万个线程同时运行，因为每一个Socket都需要一个线程来监听数据，即使大部分 Socket 都是空闲状态，只有一小部分正在繁忙的交换数据，这一百万个线程如果每个只占用 1M 的内存，那也需要 1T 的内存！这显然不太明智。
+NIO 框架#
+在上例中共有两种监听事件，一种是主线程不断地监听新的连接，另一种是其它子线程监听它所负责的Socket上的数据，那能不能把这些需要监听对象放在一起呢？然后用一个线程或少量几个线程专门负责监听所有对象上的请求？？这样就能节省大量资源啊！实际上这也是完全合理的，并且在新的 IO 框架中就是这么做的！那么我们来看看NIO的实现方式吧。">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/java/java-nio-frame.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="Java - NIO框架# 什么是 NIO# 为了弥补 Java IO 的不足，Java 从 1.4 版本开始引入了 NIO 框架，也就是说 NIO 是一套新的 IO 框架，一般解释为 Non-blocking IO，有时也解释为 New IO。它可以在实现高并发服务器的同时占用很少的资源。
+传统 IO 框架# 对于传统的 IO 框架，NIO 的优势主要体现在对请求的处理上，下面我们先来看看用传统 IO 怎样建立一个 TCP 连接。 首先创建服务端，并等待新的连接，下面是伪代码：
+ServerSocket ser = new ServerSocket(8081); while (true) { Socket sk = ser.accept(); startNewThread(sk); } 第一行是创建一个服务端对象，并准备监听本机的 8081 端口。 Socket sk = ser.accept(); 表示开始监听新的连接请求，这行代码是阻塞式的，直到有新的客户端连接过来，会返回一个新 Socket 连接对象。 startNewThread() 方法是处理 Socket 连接的主要逻辑，它会创建一个新的线程并立即返回，该线程的工作是一直监听客户端发来的数据，然后作出回应。 这时又会回到循环的项部，继续等待新的连接，这就是一个服务端了。 缺点：乍一看没什么问题，一切都很美好不是吗，但是当连接的请求多了呢，比如几万或者几百万？这样的话就会有几百万个线程同时运行，因为每一个Socket都需要一个线程来监听数据，即使大部分 Socket 都是空闲状态，只有一小部分正在繁忙的交换数据，这一百万个线程如果每个只占用 1M 的内存，那也需要 1T 的内存！这显然不太明智。
+NIO 框架# 在上例中共有两种监听事件，一种是主线程不断地监听新的连接，另一种是其它子线程监听它所负责的Socket上的数据，那能不能把这些需要监听对象放在一起呢？然后用一个线程或少量几个线程专门负责监听所有对象上的请求？？这样就能节省大量资源啊！实际上这也是完全合理的，并且在新的 IO 框架中就是这么做的！那么我们来看看NIO的实现方式吧。">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="java">
+<title>Java - NIO框架 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/java/java-nio-frame.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-java">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle" checked />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="active">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle"  />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Java - NIO框架</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#什么是-nio">什么是 NIO</a></li>
+    <li><a href="#传统-io-框架">传统 IO 框架</a></li>
+    <li><a href="#nio-框架">NIO 框架</a>
+      <ul>
+        <li><a href="#创建-selector-对象">创建 Selector 对象</a></li>
+        <li><a href="#创建-serversocketchannel-对象">创建 ServerSocketChannel 对象</a></li>
+        <li><a href="#注册新连接事件">注册新连接事件</a></li>
+        <li><a href="#处理事件">处理事件</a></li>
+        <li><a href="#注册接收数据事件">注册接收数据事件</a></li>
+        <li><a href="#完整示例">完整示例</a></li>
+        <li><a href="#数据处理">数据处理</a></li>
+      </ul>
+    </li>
+    <li><a href="#nio中各对象的关系">NIO中各对象的关系</a></li>
+    <li><a href="#参考">参考</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="java---nio框架">Java - NIO框架<a class="anchor" href="#java---nio%e6%a1%86%e6%9e%b6">#</a></h1>
+<h2 id="什么是-nio">什么是 NIO<a class="anchor" href="#%e4%bb%80%e4%b9%88%e6%98%af-nio">#</a></h2>
+<p>为了弥补 Java IO 的不足，Java 从 1.4 版本开始引入了 NIO 框架，也就是说 NIO 是一套新的 IO 框架，一般解释为 Non-blocking IO，有时也解释为 New IO。它可以在实现高并发服务器的同时占用很少的资源。</p>
+<h2 id="传统-io-框架">传统 IO 框架<a class="anchor" href="#%e4%bc%a0%e7%bb%9f-io-%e6%a1%86%e6%9e%b6">#</a></h2>
+<p>对于传统的 IO 框架，NIO 的优势主要体现在对请求的处理上，下面我们先来看看用传统 IO 怎样建立一个 TCP 连接。 首先创建服务端，并等待新的连接，下面是伪代码：</p>
+<pre tabindex="0"><code>ServerSocket ser = new ServerSocket(8081);
+ 
+while (true) {
+     
+    Socket sk = ser.accept();
+ 
+    startNewThread(sk);
+ 
+}</code></pre><ol>
+<li>第一行是创建一个服务端对象，并准备监听本机的 8081 端口。</li>
+<li><code>Socket sk = ser.accept();</code> 表示开始监听新的连接请求，这行代码是阻塞式的，直到有新的客户端连接过来，会返回一个新 Socket 连接对象。</li>
+<li><code>startNewThread()</code> 方法是处理 Socket 连接的主要逻辑，它会创建一个新的线程并立即返回，该线程的工作是一直监听客户端发来的数据，然后作出回应。</li>
+<li>这时又会回到循环的项部，继续等待新的连接，这就是一个服务端了。</li>
+</ol>
+<p>缺点：乍一看没什么问题，一切都很美好不是吗，但是当连接的请求多了呢，比如几万或者几百万？这样的话就会有几百万个线程同时运行，因为每一个Socket都需要一个线程来监听数据，即使大部分 Socket 都是空闲状态，只有一小部分正在繁忙的交换数据，这一百万个线程如果每个只占用 1M 的内存，那也需要 1T 的内存！这显然不太明智。</p>
+<h2 id="nio-框架">NIO 框架<a class="anchor" href="#nio-%e6%a1%86%e6%9e%b6">#</a></h2>
+<p>在上例中共有两种监听事件，一种是主线程不断地监听新的连接，另一种是其它子线程监听它所负责的Socket上的数据，那能不能把这些需要监听对象放在一起呢？然后用一个线程或少量几个线程专门负责监听所有对象上的请求？？这样就能节省大量资源啊！实际上这也是完全合理的，并且在新的 IO 框架中就是这么做的！那么我们来看看NIO的实现方式吧。</p>
+<h3 id="创建-selector-对象">创建 Selector 对象<a class="anchor" href="#%e5%88%9b%e5%bb%ba-selector-%e5%af%b9%e8%b1%a1">#</a></h3>
+<p>根据以上思路，我们首先需要一个池用来存放这些需要监的对象，它就是 NIO 框架中的 <code>Selector</code> 类，那怎么创建呢？如下：</p>
+<pre tabindex="0"><code>Selector sel = Selector.open();</code></pre><h3 id="创建-serversocketchannel-对象">创建 ServerSocketChannel 对象<a class="anchor" href="#%e5%88%9b%e5%bb%ba-serversocketchannel-%e5%af%b9%e8%b1%a1">#</a></h3>
+<p>然后我们需要一个类似旧 IO 框架中的 <code>ServerSocket</code>，用来监听某端口上的连接请求，在 NIO 中它叫做 <code>ServerSocketChannel</code>：</p>
+<pre tabindex="0"><code>ServerSocketChannel ssc = ServerSocketChannel.open();
+ssc.socket().bind(new InetSocketAddress(&#34;localhost&#34;, 8081));
+ssc.configureBlocking(false);</code></pre><p>创建好之后需要设置一些相应的参数，无非就是 IP 端口之类，最后一行是将它设置为非阻塞，还记得传统 IO 的实现方式吗？它有一步是监听新的连接，也就是 <code>ser.accept()</code> 这一句，它是阻塞式的，当设置了 <code>ssc.configureBlocking(false)</code> 之后，<code>accept()</code> 方法就不再阻塞，而是立即返回，这样主线程就可以腾出时间做更多的事情，而不是一味地干等着。</p>
+<h3 id="注册新连接事件">注册新连接事件<a class="anchor" href="#%e6%b3%a8%e5%86%8c%e6%96%b0%e8%bf%9e%e6%8e%a5%e4%ba%8b%e4%bb%b6">#</a></h3>
+<p>然后把这个 <code>ServerSocketChannel</code> 对象放入 <code>Selector</code> 中，在 NIO 中，这个动作被称为注册，像下面这样：</p>
+<pre tabindex="0"><code>ssc.register(sel, SelectionKey.OP_ACCEPT);</code></pre><p>这样 <code>ssc</code> 就被当作事件注册到 <code>Selector</code> 中，<code>register()</code> 的第二个参数是为了标记这个事件的类型，也就是说 <code>Selector</code> 中可以多种类型的事件。</p>
+<h3 id="处理事件">处理事件<a class="anchor" href="#%e5%a4%84%e7%90%86%e4%ba%8b%e4%bb%b6">#</a></h3>
+<p>现在，事件池中已经有一个事件了，这时我们需要写一个循环，不断地从池中取出已发生的事件并处理掉，取出来的事件是一个 <code>Set</code> 集合，然后遍历里面的事件：</p>
+<pre tabindex="0"><code>sel.select();
+Set&lt;SelectionKey&gt; selectionKeys = sel.selectedKeys();
+Iterator&lt;SelectionKey&gt; it = selectionKeys.iterator();
+while(it.hasNext()){
+    SelectionKey key = it.next();
+...</code></pre><h3 id="注册接收数据事件">注册接收数据事件<a class="anchor" href="#%e6%b3%a8%e5%86%8c%e6%8e%a5%e6%94%b6%e6%95%b0%e6%8d%ae%e4%ba%8b%e4%bb%b6">#</a></h3>
+<p>这个 key 要怎么处理呢？它不是就是我们放进去的 <code>ServerSocketChannel</code> 吗，我们调用它的 <code>accept()</code> 方法就可以了，它返回一个 <code>Socket</code> 对象，然后将这个新的对象也放入池中，让 <code>Selector</code> 统一管理与监听，放进去之前也要将它设置为非阻塞：</p>
+<pre tabindex="0"><code>ServerSocketChannel c = (ServerSocketChannel)key.channel();
+SocketChannel sc = c.accept();
+sc.configureBlocking(false);
+     
+//将新的连接加入监听器中
+sc.register(sel, SelectionKey.OP_READ);</code></pre><p>注意这时 <code>register()</code> 方法的第二个参数不一样了，它被标记为 <code>OP_READ</code> 类型的事件。</p>
+<h3 id="完整示例">完整示例<a class="anchor" href="#%e5%ae%8c%e6%95%b4%e7%a4%ba%e4%be%8b">#</a></h3>
+<p>这时，池中已经有两种事件了，所以我们在取出事件后，要对其作区分，不同事件做不同的处理，下面是服务端的完整逻辑：</p>
+<pre tabindex="0"><code>public static void main(String[] args) throws Exception {
+    //创建一个事件池
+    Selector sel = Selector.open();
+     
+    //创建一个服务端并加入事件池
+    ServerSocketChannel ssc = ServerSocketChannel.open();
+    ssc.socket().bind(new InetSocketAddress(&#34;localhost&#34;, 8888));
+    ssc.configureBlocking(false);
+    ssc.register(sel, SelectionKey.OP_ACCEPT);
+    //不断监听并处理池中的事件
+    while(true){
+         //不断监听并取出池中的事件
+        int num = sel.select();
+        System.out.printf(&#34;read [%s] event from selector!\n&#34;, num);
+        Set&lt;SelectionKey&gt; selectionKeys = sel.selectedKeys();
+        Iterator&lt;SelectionKey&gt; it = selectionKeys.iterator();
+        //处理取出的事件
+        while(it.hasNext()){
+            SelectionKey key = it.next();
+             
+            if(key.readyOps() == SelectionKey.OP_ACCEPT){
+                System.out.println(&#34;检测到新的连接&#34;);
+                ServerSocketChannel c = (ServerSocketChannel)key.channel();
+                SocketChannel sc = c.accept();
+                sc.configureBlocking(false);
+                 
+                //将新的连接加入监听器中
+                sc.register(sel, SelectionKey.OP_READ);
+                 
+            } else if (key.readyOps() == SelectionKey.OP_READ){
+                System.out.println(&#34;检测到新的请求&#34;);
+                SocketChannel sc = (SocketChannel)key.channel();
+                 
+                try{
+                    handelRequest(sc);
+                }catch (IOException e) {
+                    System.out.println(&#34;有连接被断开&#34;);
+                    sc.close();
+                    key.cancel();
+                }
+            }
+        }
+        selectionKeys.clear();
+        Thread.sleep(1000);
+    }</code></pre><h3 id="数据处理">数据处理<a class="anchor" href="#%e6%95%b0%e6%8d%ae%e5%a4%84%e7%90%86">#</a></h3>
+<p><code>handelRequest()</code> 方法是需要自己实现的，它主要是从 <code>SocketChannel</code> 中接收数据然后作出相应的动作，如果接收时抛出异常，我们就认为这个连接已经断开，并取消对其的监听，也就是 <code>key.cancel();</code>，为了让程序跑的慢一些以便看清楚它的流程，所以加入了 <code>Thread.sleep(1000);</code>。</p>
+<p><code>handelRequest()</code> 方法实现如下：</p>
+<pre tabindex="0"><code>static ByteBuffer buff = ByteBuffer.allocate(128);
+static void handelRequest(SocketChannel sc) throws IOException{
+    buff.clear();
+     
+    //读取客户端发来的数据
+    if(sc.read(buff) &lt; 1)
+        return;
+     
+    //处理接收到的数据
+    buff.flip();
+    System.out.println(new String(buff.array()));
+ 
+    //向客户端作出回应
+    sc.write(ByteBuffer.wrap(&#34;I am Server!&#34;.getBytes()));
+}</code></pre><p>第一行创建是 NIO 框架专用的 <code>ByteBuffer</code>。</p>
+<p><code>if(sc.read(buff) &lt; 1)</code> 是将客户端发来的数据读到 <code>ByteBuffer</code> 中，如果客户端没有发数据过来，此方法会返回 -1。</p>
+<h2 id="nio中各对象的关系">NIO中各对象的关系<a class="anchor" href="#nio%e4%b8%ad%e5%90%84%e5%af%b9%e8%b1%a1%e7%9a%84%e5%85%b3%e7%b3%bb">#</a></h2>
+<p>到这里整个流程差不多就结束了，但有些概念还是需要捋一捋，在 NIO 框架中，所有对象可以分为三种，Channel、ByteBuffer 和 Selector，其中 Channel 的概念上面没有提到，其实它就是一个抽象，因为我们要把所有需监听的对象放到 Selector 这个池中，所以当然需要将放进去的东西统一抽象出来，也就是说在 NIO 中，所有连接都被看作是 Channel，而从一个 Channel 中读出数据或者是写入数据都要先经过 ByteBuffer，ByteBuffer 起到缓冲的作用，在 NIO 中所有读写操都是非阻塞的，而如果客户端发一条很长的数据过来，由于网卡和操作系统的限制，必然后被切分成多条子消息发送到服务端，为了避免数据的不完整性，缓冲机制就成了必须品。</p>
+<h2 id="参考">参考<a class="anchor" href="#%e5%8f%82%e8%80%83">#</a></h2>
+<ol>
+<li>IBM有一篇NIO的文章，写的相当详细适合刚接触NIO的同学：
+<a href="https://www.ibm.com/developerworks/cn/education/java/j-nio/j-nio.html#ibm-pcon">NIO 入门</a></li>
+<li>在实际项目中，一般不会自主实现一套产品级的高可用 NIO 框架，现在比较成熟的 NIO 开源框架是 Netty，在很多项目中被使用，我之前写过一篇关于 Netty 的文章：
+<a href="/articles/java/netty-guide">Netty 使用教程</a></li>
+</ol>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/java/java-from-class-to-machine-code.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="Java - 从CLASS到机器码" />
+        <span>Java - 从CLASS到机器码</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/java/netty-guide.html" class="flex align-center">
+        <span>Java - Netty入门</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="Java - Netty入门" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#什么是-nio">什么是 NIO</a></li>
+    <li><a href="#传统-io-框架">传统 IO 框架</a></li>
+    <li><a href="#nio-框架">NIO 框架</a>
+      <ul>
+        <li><a href="#创建-selector-对象">创建 Selector 对象</a></li>
+        <li><a href="#创建-serversocketchannel-对象">创建 ServerSocketChannel 对象</a></li>
+        <li><a href="#注册新连接事件">注册新连接事件</a></li>
+        <li><a href="#处理事件">处理事件</a></li>
+        <li><a href="#注册接收数据事件">注册接收数据事件</a></li>
+        <li><a href="#完整示例">完整示例</a></li>
+        <li><a href="#数据处理">数据处理</a></li>
+      </ul>
+    </li>
+    <li><a href="#nio中各对象的关系">NIO中各对象的关系</a></li>
+    <li><a href="#参考">参考</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>开发工具 on 橡果笔记</title>
+    <link>http://localhost:1313/develop-tool/index.html</link>
+    <description>Recent content in 开发工具 on 橡果笔记</description>
+    <generator>Hugo</generator>
+    <language>en</language>
+    <atom:link href="http://localhost:1313/develop-tool/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title></title>
+      <link>http://localhost:1313/develop-tool/git.html</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/develop-tool/git.html</guid>
+      <description>&lt;h1 id=&#34;git常用命令&#34;&gt;GIT常用命令&lt;a class=&#34;anchor&#34; href=&#34;#git%e5%b8%b8%e7%94%a8%e5%91%bd%e4%bb%a4&#34;&gt;#&lt;/a&gt;&lt;/h1&gt;&#xA;&lt;p&gt;克隆指定分支&lt;/p&gt;&#xA;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;git clone -b &amp;lt;branch_name&amp;gt; --depth 1 https://github.com/containerd/containerd.git&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;克隆指定TAG&lt;/p&gt;&#xA;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;git clone -b &amp;lt;tag_name&amp;gt; --depth 1 https://github.com/containerd/containerd.git&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;检出分支&lt;/p&gt;&#xA;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;git checkout tags/&amp;lt;tag_name&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;检出TAG并创建分支&lt;/p&gt;&#xA;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;git checkout tags/&amp;lt;tag_name&amp;gt; -b &amp;lt;branch_name&amp;gt;&lt;/code&gt;&lt;/pre&gt;</description>
+    </item>
+    <item>
+      <title></title>
+      <link>http://localhost:1313/develop-tool/jq.html</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/develop-tool/jq.html</guid>
+      <description>&lt;h1 id=&#34;jq命令&#34;&gt;JQ命令&lt;a class=&#34;anchor&#34; href=&#34;#jq%e5%91%bd%e4%bb%a4&#34;&gt;#&lt;/a&gt;&lt;/h1&gt;&#xA;&lt;p&gt;当key中包含点时或当key以数字开头时&#xA;docker inspect $container_id | jq -r &amp;lsquo;.[-1].NetworkSettings.Networks|.[&amp;ldquo;lenovo.com&amp;rdquo;].IPAddress&lt;/p&gt;&#xA;&lt;p&gt;根据元素的值选择元素&#xA;echo &amp;lsquo;{ &amp;ldquo;data&amp;rdquo;: [ { &amp;ldquo;joinTime&amp;rdquo;: 1507521910625, &amp;ldquo;memo&amp;rdquo;: &amp;ldquo;&amp;rdquo;, &amp;ldquo;projectId&amp;rdquo;: 48, &amp;ldquo;projectName&amp;rdquo;: &amp;ldquo;jiajun2&amp;rdquo; }, { &amp;ldquo;joinTime&amp;rdquo;: 1507794370272, &amp;ldquo;memo&amp;rdquo;: &amp;ldquo;&amp;rdquo;, &amp;ldquo;projectId&amp;rdquo;: 49, &amp;ldquo;projectName&amp;rdquo;: &amp;ldquo;jiajun22&amp;rdquo; } ], &amp;ldquo;msg&amp;rdquo;: &amp;ldquo;&amp;rdquo;, &amp;ldquo;result&amp;rdquo;: 0 }&amp;rsquo; |&#xA;jq &amp;lsquo;.data[]|select(.projectName|startswith(&amp;ldquo;jiajun22&amp;rdquo;))|.projectId&amp;rsquo;&#xA;或&#xA;kubeapi /api/v1/namespaces/p48-u25-jiajun2/pods/|jq -r &amp;ndash;arg ip 172.210.130.86 &amp;lsquo;.items[]|select(.status.podIP==$ip)|.status&amp;rsquo;&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title></title>
+      <link>http://localhost:1313/develop-tool/vscode.html</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/develop-tool/vscode.html</guid>
+      <description>&lt;h1 id=&#34;vscode-for-go&#34;&gt;vscode for go&lt;a class=&#34;anchor&#34; href=&#34;#vscode-for-go&#34;&gt;#&lt;/a&gt;&lt;/h1&gt;&#xA;&lt;h3 id=&#34;常用快捷键&#34;&gt;常用快捷键&lt;a class=&#34;anchor&#34; href=&#34;#%e5%b8%b8%e7%94%a8%e5%bf%ab%e6%8d%b7%e9%94%ae&#34;&gt;#&lt;/a&gt;&lt;/h3&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+space&lt;/code&gt; ：手动代码提示（Trigger Suggest）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+k ctrl+0&lt;/code&gt;：折叠所有代码块（Fold ALL）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+k ctrl+j&lt;/code&gt;：折叠所有代码块（Unfold ALL）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;alt+left&lt;/code&gt; =&amp;gt; &lt;code&gt;ctrl+-&lt;/code&gt;：回退到上一步（go back）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;alt+right&lt;/code&gt; =&amp;gt; &lt;code&gt;ctrl++&lt;/code&gt;：下一步（go forward）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+f&lt;/code&gt;：在当前文件中查找（Find in file）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+h&lt;/code&gt;：在当前文件中替换（Replace in file）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+shift+f&lt;/code&gt;：在当前文件夹查找（Find in files）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;ctrl+shift+h&lt;/code&gt;：在当前文件夹替换（Replace in files）&lt;/li&gt;&#xA;&lt;li&gt;&lt;code&gt;none&lt;/code&gt;：代码格式化（Format Document）&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;h3 id=&#34;gopls&#34;&gt;gopls&lt;a class=&#34;anchor&#34; href=&#34;#gopls&#34;&gt;#&lt;/a&gt;&lt;/h3&gt;&#xA;&lt;p&gt;之前vscode for golang需要安装十几个命令行工具，在vscode 1.30.2版本（2018年）中，vscode加入了后台进程gopls来更好的支持代码提示、转到定义等功能。&lt;code&gt;gopls for vscode&lt;/code&gt;更多用法参见 &lt;a href=&#34;https://github.com/golang/tools/blob/master/gopls/doc/vscode.md&#34;&gt;github&lt;/a&gt;&lt;/p&gt;&#xA;&lt;h3 id=&#34;gopls安装&#34;&gt;gopls安装&lt;a class=&#34;anchor&#34; href=&#34;#gopls%e5%ae%89%e8%a3%85&#34;&gt;#&lt;/a&gt;&lt;/h3&gt;&#xA;&lt;p&gt;以 ubuntu on windows 为例，安装 vs code with gopls。&lt;/p&gt;&#xA;&lt;ol&gt;&#xA;&lt;li&gt;&#xA;&lt;p&gt;下载最新版本golang，并配置好环境变量&lt;/p&gt;&#xA;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;cd; mkdir -p program golang&#xA;curl -Lo go.tar.gz https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz&#xA;tar -zxf go.tar.gz -C program/&#xA;echo export GOROOT=$PWD/program/go &amp;gt;&amp;gt; .bashrc&#xA;echo export GOPATH=$PWD/golang &amp;gt;&amp;gt; .bashrc&#xA;echo &amp;#39;PATH=$PATH:$GOROOT/bin:$GOPATH/bin&amp;#39; &amp;gt;&amp;gt; .bashrc&#xA;. .bashrc&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;&#xA;&lt;li&gt;&#xA;&lt;p&gt;安装gopls&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

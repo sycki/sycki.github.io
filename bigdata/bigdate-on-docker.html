@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Bigdata on Docker#
+最近我们在把自己的大数据平台迁移到 Docker 上面来，最初的想法是用 Docker 技术代替我们现在的 Open Stack 平台，也就是把 Docker 容器当成虚拟来用，看到这里可能人要说了：这明显没有遵循 Docker 的佳实践啊！是的，但具我了解，很多大数据厂商都在想办法把自家的平台容器化，而且有不少厂商已经做到了，也许这就是趋势吧，尽管 Docker 的设计者并不建议这样做，到后面我们会把大数据平台中的每一个组件一个个的拆开，每一个组件都容器化。现在我们已经实践有一段时间了，并且下一步打算用 Kubernetes 来管理我们的 Docker 集群，先来整理一下在 bigdata on docker 实践中遇到的问题，这些问题都是最实际的，正所谓：真正的工作在细节之中。也希望能给读者一条捷径。
+
+现在我们来把一个已有的大数据集群放在 Docker 环境中，我指的是重新搭一个集群而不是完整的挪过去。。
+系统环境#
+大数据平台在整体架构上不会有什么变化，就是把物理机换成是 Docker 容器而已，那么容器从哪来？一般情况下你需要自己构建一个出来，比如你的大数据平台是基于 CentOS6.5 的，那就要自己动手构建一个基础镜像作为系统，这个镜像中可以包含你需要的一切依赖，如 jdk 和 python 等，然后用这个镜像创建指定数据的容器，比如我打算搭建一个 5 节点的集群那就创建 5 个容器出来，关于创建容器的参数下面再讲，因为还要涉及到网络和挂载之类的问题。
+同步镜像#
+有了基础镜像之后，我们需要把这个镜像同步到所有物理机上，如果你如有一台物理机的话，可能不需要这一步，直接用 docker pull docker.io/... 这样的方式就可以了，但如果你有几十台或者更多的物理机，那么你需要搭建一个私有仓库，把你的镜像 push 进入，然后其它机器执行 docker pull 即可。
+网络#
+解决 Docker 的跨主机通信是比较重要的一环，好在 Docker 1.9 版本中加入了 Overlay 网络，官方给出来两种方案解决跨主机的通信问题，一个是创建 Swarm 集群，创建好后它会自带一个 Overlay 网络，然后在这个集群中用 Docker service create 这样的方式创建一些容器，它们相互之间就可以直接通信了，但这个网络不能用 Docker run --network 的方式使用。">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/bigdata/bigdate-on-docker.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="Bigdata on Docker# 最近我们在把自己的大数据平台迁移到 Docker 上面来，最初的想法是用 Docker 技术代替我们现在的 Open Stack 平台，也就是把 Docker 容器当成虚拟来用，看到这里可能人要说了：这明显没有遵循 Docker 的佳实践啊！是的，但具我了解，很多大数据厂商都在想办法把自家的平台容器化，而且有不少厂商已经做到了，也许这就是趋势吧，尽管 Docker 的设计者并不建议这样做，到后面我们会把大数据平台中的每一个组件一个个的拆开，每一个组件都容器化。现在我们已经实践有一段时间了，并且下一步打算用 Kubernetes 来管理我们的 Docker 集群，先来整理一下在 bigdata on docker 实践中遇到的问题，这些问题都是最实际的，正所谓：真正的工作在细节之中。也希望能给读者一条捷径。
+现在我们来把一个已有的大数据集群放在 Docker 环境中，我指的是重新搭一个集群而不是完整的挪过去。。
+系统环境# 大数据平台在整体架构上不会有什么变化，就是把物理机换成是 Docker 容器而已，那么容器从哪来？一般情况下你需要自己构建一个出来，比如你的大数据平台是基于 CentOS6.5 的，那就要自己动手构建一个基础镜像作为系统，这个镜像中可以包含你需要的一切依赖，如 jdk 和 python 等，然后用这个镜像创建指定数据的容器，比如我打算搭建一个 5 节点的集群那就创建 5 个容器出来，关于创建容器的参数下面再讲，因为还要涉及到网络和挂载之类的问题。
+同步镜像# 有了基础镜像之后，我们需要把这个镜像同步到所有物理机上，如果你如有一台物理机的话，可能不需要这一步，直接用 docker pull docker.io/... 这样的方式就可以了，但如果你有几十台或者更多的物理机，那么你需要搭建一个私有仓库，把你的镜像 push 进入，然后其它机器执行 docker pull 即可。
+网络# 解决 Docker 的跨主机通信是比较重要的一环，好在 Docker 1.9 版本中加入了 Overlay 网络，官方给出来两种方案解决跨主机的通信问题，一个是创建 Swarm 集群，创建好后它会自带一个 Overlay 网络，然后在这个集群中用 Docker service create 这样的方式创建一些容器，它们相互之间就可以直接通信了，但这个网络不能用 Docker run --network 的方式使用。">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="bigdata">
+<title>Bigdata on Docker | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/bigdata/bigdate-on-docker.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-bigdata">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle" checked />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="active">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle"  />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Bigdata on Docker</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#系统环境">系统环境</a></li>
+    <li><a href="#同步镜像">同步镜像</a></li>
+    <li><a href="#网络">网络</a></li>
+    <li><a href="#存储">存储</a></li>
+    <li><a href="#访问端口">访问端口</a></li>
+    <li><a href="#启动参数">启动参数</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="bigdata-on-docker">Bigdata on Docker<a class="anchor" href="#bigdata-on-docker">#</a></h1>
+<p>最近我们在把自己的大数据平台迁移到 Docker 上面来，最初的想法是用 Docker 技术代替我们现在的 Open Stack 平台，也就是把 Docker 容器当成虚拟来用，看到这里可能人要说了：这明显没有遵循 Docker 的佳实践啊！是的，但具我了解，很多大数据厂商都在想办法把自家的平台容器化，而且有不少厂商已经做到了，也许这就是趋势吧，尽管 Docker 的设计者并不建议这样做，到后面我们会把大数据平台中的每一个组件一个个的拆开，每一个组件都容器化。现在我们已经实践有一段时间了，并且下一步打算用 Kubernetes 来管理我们的 Docker 集群，先来整理一下在 bigdata on docker 实践中遇到的问题，这些问题都是最实际的，正所谓：真正的工作在细节之中。也希望能给读者一条捷径。</p>
+<hr>
+<p>现在我们来把一个已有的大数据集群放在 Docker 环境中，我指的是重新搭一个集群而不是完整的挪过去。。</p>
+<h2 id="系统环境">系统环境<a class="anchor" href="#%e7%b3%bb%e7%bb%9f%e7%8e%af%e5%a2%83">#</a></h2>
+<p>大数据平台在整体架构上不会有什么变化，就是把物理机换成是 Docker 容器而已，那么容器从哪来？一般情况下你需要自己构建一个出来，比如你的大数据平台是基于 CentOS6.5 的，那就要自己动手<a href="/articles/docker/docker-build-centos65">构建一个基础镜像</a>作为系统，这个镜像中可以包含你需要的一切依赖，如 jdk 和 python 等，然后用这个镜像创建指定数据的容器，比如我打算搭建一个 5 节点的集群那就创建 5 个容器出来，关于创建容器的参数下面再讲，因为还要涉及到网络和挂载之类的问题。</p>
+<h2 id="同步镜像">同步镜像<a class="anchor" href="#%e5%90%8c%e6%ad%a5%e9%95%9c%e5%83%8f">#</a></h2>
+<p>有了基础镜像之后，我们需要把这个镜像同步到所有物理机上，如果你如有一台物理机的话，可能不需要这一步，直接用 <code>docker pull docker.io/...</code> 这样的方式就可以了，但如果你有几十台或者更多的物理机，那么你需要<a href="/articles/docker/docker-registry-deploy-manage">搭建一个私有仓库</a>，把你的镜像 push 进入，然后其它机器执行 <code>docker pull</code> 即可。</p>
+<h2 id="网络">网络<a class="anchor" href="#%e7%bd%91%e7%bb%9c">#</a></h2>
+<p>解决 Docker 的跨主机通信是比较重要的一环，好在 Docker 1.9 版本中加入了 Overlay 网络，官方给出来两种方案解决跨主机的通信问题，一个是创建 Swarm 集群，创建好后它会自带一个 Overlay 网络，然后在这个集群中用 <code>Docker service create</code> 这样的方式创建一些容器，它们相互之间就可以直接通信了，但这个网络不能用 <code>Docker run --network</code> 的方式使用。</p>
+<p>另一个是依赖第三方的 Key Value 存储系统，如：etcd, zookeeper 等，让所有 Docker 将自己的信息注册进入，然后手动创建一个 Overlay 网络，以此来实现多主机通信，笔者一直在用 zookeeper 因为对它比较熟悉啦，关于实现的细节可以看 <a href="/articles/docker/docker-multi-host-with-zk">Docker 多主机通信之ZK</a>。</p>
+<p>在 Docker 1.13 版本中，官方去除了一些限制，即前面说到的 Swarm 集群自带的网络，新的版本允许以 <code>Docker run --network</code> 的方式使用了，而且不依赖第三方工具，实现起来相当简单，只需在创建 Overlay 网络时加上 <code>--attachable</code> 选项即可。</p>
+<h2 id="存储">存储<a class="anchor" href="#%e5%ad%98%e5%82%a8">#</a></h2>
+<p>容器的大小是有限制的，如果安装 Docker 后不作任何配置，那么每个容器最多使用 10G 的容间，如果你之前只是用容器跑一些 Tomcat 之类的应用可以不会注意到这个问题，但是如果把它当虚机用的话，你很快会发现容器空间不足之类的告警，这时你需要重新配置你的 Docker 启动参数，如果你用的是 CentOS7 那么可以参考<a href="/articles/docker/docker-config-direct-lvm">这篇文章</a>。</p>
+<p>到这里还没完，我们还需要解决大数据的平台中的核心问题：“大数据的存储”，比如 HDFS 中的数据要存在哪？容器里当然是不行的，这时需要把物理机上的硬盘先 mount 到物理机上不同的目录上，如 <code>mount /dev/sdb /data/sdb</code> ，然后通过 <code>Docker run -v /data/sdb:/data/sdb</code> 参数将目录挂载到容器内，假设有三台物理机，每台物理有6块硬盘，然后我打算在每个物理机上跑两个容器，那么每个容器可以分到三个硬盘，这些应该提前规划好。</p>
+<h2 id="访问端口">访问端口<a class="anchor" href="#%e8%ae%bf%e9%97%ae%e7%ab%af%e5%8f%a3">#</a></h2>
+<p>到这里集群已经可以跑起来了，但是从外面访问集群内的服务时，你可能还会遇到问题：<code>docker run -p</code> 选项可以把想要访问的端口映射到物理机的IP上，问题是大数据平台中的端口那么多，难道我要全部通过这种方式指定？再者说动态端口怎么办？关于这个问题，首先 <code>docker run -p</code> 选项可以指定端口范围，比如这样：<code>docker run -p 6000-6010:6000-6010</code>，这样就映射了十个端口出来，但是如果范围太大就不行了，启动慢不说，还浪费系统资源，而且它不能动态修改，容器启动后万一想修改一下是比较麻烦的。</p>
+<p>其实还可以动态映射，<code>docker run -p</code> 选项其实是通过 iptables 命令实现的，像上面那条命令实际是在物理机上创建了十条 iptables 规则，我们可以通过直接操作 iptables 达到 <a href="/articles/docker/docker-dynamic-port-map">Docker 动态映射端口</a> 的目的，比如物理机的IP是 <code>10.100.0.101</code> ，容器的IP是 <code>10.200.0.101</code> ，那么只需要一条命令就可以把所有端口映射出来，如下：</p>
+<pre tabindex="0"><code>iptables -t nat -A DOCKER -d 10.100.0.101/32 ! -i docker_gwbridge \
+-p tcp -m tcp --dport 1025:62000 -j DNAT --to-destination 10.200.0.101</code></pre><p>但是如果同一物理机上有两个容器相需要映射相同的端口出来，岂不是会冲突？当然会啊，，这个问题我总结出来的最好用的方式是，在每个物理机上设定多个IP，不同的容器映射到不同的IP上就可以了，CentOS7 增加子IP的方式可以参考<a href="/articles/linux/linux-centos7-multi-ip">这篇文章</a>。</p>
+<h2 id="启动参数">启动参数<a class="anchor" href="#%e5%90%af%e5%8a%a8%e5%8f%82%e6%95%b0">#</a></h2>
+<p>结合上面所有的内容，创建容器时可能会用到以下参数：</p>
+<pre tabindex="0"><code>docker run \
+--name node1 \
+-h node1.overlay.com \
+--network overlay.com \
+-v /data/sdb-node1:/data \
+--privileged=true \
+-p 10.100.0.101:23:22 \
+-tid registry.io:5000/centos:6.5</code></pre><p>-End-</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="Ambari - 三条命令创建集群" />
+        <span>Ambari - 三条命令创建集群</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/bigdata/bigdate-on-kubernetes.html" class="flex align-center">
+        <span>Bigdata on Kubernetes</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="Bigdata on Kubernetes" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#系统环境">系统环境</a></li>
+    <li><a href="#同步镜像">同步镜像</a></li>
+    <li><a href="#网络">网络</a></li>
+    <li><a href="#存储">存储</a></li>
+    <li><a href="#访问端口">访问端口</a></li>
+    <li><a href="#启动参数">启动参数</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

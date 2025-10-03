@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="k8s源码分析-创建Pod流程#
+本文从源码层面解释kubernetes从接收创建Pod的指令到实际创建Pod的整个过程。
+1.1 监听用户请求#
+监听的任务是由kube-apiserver这个组件来完成的，它实际上是一个WEB服务，一般是以双向TLS认证方式启动的，所以在启动时需要提供证书、私钥、客户端的CA证书和CA私钥，当然也支持HTTP的方式，启动后就开始监听用户请求了。
+1.2 对请求分类#
+kube-apiserver中的WEB服务在启动时注册了很多的Handler，golang中的Handler相当于Java中的servlet或者是Spring中的Controller，是对某一业务逻辑的封装，通俗点说，一个Handler负责对一个URI请求的处理，而在kube-apiserver中，Handler被封装成了一个叫Store的对象，怎么封装的呢？比如/api/v1/namespaces/{namespace}/pods这个URI对应了一个叫PodStorage的Store，这个Store中包含了对/api/v1/namespaces/{namespace}/pods的多个Handler，这些Handler有的是处理创建请求，有的是处理删除请求等等，代表了对一种资源的操作集。
+我们来看看这个Store的定义：
+staging/src/k8s.io/apiserver/pkg/registry/generic/registry/store.go
+type Store struct {
+    CreateStrategy rest.RESTCreateStrategy
+    AfterCreate ObjectFunc
+    UpdateStrategy rest.RESTUpdateStrategy
+    AfterUpdate ObjectFunc
+    DeleteStrategy rest.RESTDeleteStrategy
+    AfterDelete ObjectFunc
+...
+}
+
+func (e *Store) Create(ctx genericapirequest.Context, obj runtime.Object, includeUninitialized bool) (runtime.Object, error) {
+
+func (e *Store) Update(ctx genericapirequest.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+...因为每种资源所需要的操作不一样，所以Store中只包含了基本的通用的操作，作为一个基础类。
+1.3 处理请求#
+在Store的定义中有一个Storage   storage.Interface字段，Store中的创建、更新、删除等操作，比如上面的Create()函数中会调用这个对象中的Create()方法，也就是说这个Storage对象包含了一组更低级的操作，可以看作是数据的持久化层，这些操作都是通用的，而Store可以用Storage中的功能组合出具有不同功能的控制层对象，也就是Store对象啊，，好吧我们距离真相又进了一步，那这个Storage  storage.Interface对象又是怎样实现的呢？
+1.4 数据存储到ETCD#
+Storage字段是一个叫Interface的类型，里面定义了一些数据持久层的操作，这里就不贴出来了，我们更关心它的实现，我们先来看看Interface实例的创建吧，它的创
+建工作是由一个工厂类负责的：
+staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/factory.go
+func Create(c storagebackend.Config) (storage.Interface, DestroyFunc, error) {
+        switch c.Type {
+        case storagebackend.StorageTypeETCD2:
+                return newETCD2Storage(c)
+        case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
+                return newETCD3Storage(c)
+        default:
+                return nil, nil, fmt.Errorf(&#34;unknown storage type: %s&#34;, c.Type)
+        }
+}好吧，看到这里就彻底明白了，根据配置中指定的存储服务创建不同的Storage对象，并且目前只支持ETCD2和ETCD3两种存储服务，持久层所做的增删改查就是对ETCD中
+数据的增删改查，总结一下Storage对象也是就Interface被创建的过程：">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/kubernetes/k8s-code-pod-create.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="k8s源码分析-创建Pod流程# 本文从源码层面解释kubernetes从接收创建Pod的指令到实际创建Pod的整个过程。
+1.1 监听用户请求# 监听的任务是由kube-apiserver这个组件来完成的，它实际上是一个WEB服务，一般是以双向TLS认证方式启动的，所以在启动时需要提供证书、私钥、客户端的CA证书和CA私钥，当然也支持HTTP的方式，启动后就开始监听用户请求了。
+1.2 对请求分类# kube-apiserver中的WEB服务在启动时注册了很多的Handler，golang中的Handler相当于Java中的servlet或者是Spring中的Controller，是对某一业务逻辑的封装，通俗点说，一个Handler负责对一个URI请求的处理，而在kube-apiserver中，Handler被封装成了一个叫Store的对象，怎么封装的呢？比如/api/v1/namespaces/{namespace}/pods这个URI对应了一个叫PodStorage的Store，这个Store中包含了对/api/v1/namespaces/{namespace}/pods的多个Handler，这些Handler有的是处理创建请求，有的是处理删除请求等等，代表了对一种资源的操作集。
+我们来看看这个Store的定义： staging/src/k8s.io/apiserver/pkg/registry/generic/registry/store.go
+type Store struct { CreateStrategy rest.RESTCreateStrategy AfterCreate ObjectFunc UpdateStrategy rest.RESTUpdateStrategy AfterUpdate ObjectFunc DeleteStrategy rest.RESTDeleteStrategy AfterDelete ObjectFunc ... } func (e *Store) Create(ctx genericapirequest.Context, obj runtime.Object, includeUninitialized bool) (runtime.Object, error) { func (e *Store) Update(ctx genericapirequest.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) { ...因为每种资源所需要的操作不一样，所以Store中只包含了基本的通用的操作，作为一个基础类。
+1.3 处理请求# 在Store的定义中有一个Storage storage.Interface字段，Store中的创建、更新、删除等操作，比如上面的Create()函数中会调用这个对象中的Create()方法，也就是说这个Storage对象包含了一组更低级的操作，可以看作是数据的持久化层，这些操作都是通用的，而Store可以用Storage中的功能组合出具有不同功能的控制层对象，也就是Store对象啊，，好吧我们距离真相又进了一步，那这个Storage storage.Interface对象又是怎样实现的呢？
+1.4 数据存储到ETCD# Storage字段是一个叫Interface的类型，里面定义了一些数据持久层的操作，这里就不贴出来了，我们更关心它的实现，我们先来看看Interface实例的创建吧，它的创 建工作是由一个工厂类负责的： staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/factory.go
+func Create(c storagebackend.Config) (storage.Interface, DestroyFunc, error) { switch c.Type { case storagebackend.StorageTypeETCD2: return newETCD2Storage(c) case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3: return newETCD3Storage(c) default: return nil, nil, fmt.Errorf(&#34;unknown storage type: %s&#34;, c.Type) } }好吧，看到这里就彻底明白了，根据配置中指定的存储服务创建不同的Storage对象，并且目前只支持ETCD2和ETCD3两种存储服务，持久层所做的增删改查就是对ETCD中 数据的增删改查，总结一下Storage对象也是就Interface被创建的过程：">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="kubernetes">
+<title>k8s源码分析-创建Pod流程 | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/kubernetes/k8s-code-pod-create.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-kubernetes">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle" checked />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="active">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>k8s源码分析-创建Pod流程</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#11-监听用户请求">1.1 监听用户请求</a></li>
+        <li><a href="#12-对请求分类">1.2 对请求分类</a></li>
+        <li><a href="#13-处理请求">1.3 处理请求</a></li>
+        <li><a href="#14-数据存储到etcd">1.4 数据存储到ETCD</a></li>
+        <li><a href="#15-调用etcd客户端">1.5 调用ETCD客户端</a></li>
+      </ul>
+    </li>
+    <li><a href="#21-调度pod">2.1 调度Pod</a></li>
+    <li><a href="#31-创建pod">3.1 创建Pod</a></li>
+    <li><a href="#相关资料">相关资料</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="k8s源码分析-创建pod流程">k8s源码分析-创建Pod流程<a class="anchor" href="#k8s%e6%ba%90%e7%a0%81%e5%88%86%e6%9e%90-%e5%88%9b%e5%bb%bapod%e6%b5%81%e7%a8%8b">#</a></h1>
+<p>本文从源码层面解释kubernetes从接收创建Pod的指令到实际创建Pod的整个过程。</p>
+<h3 id="11-监听用户请求">1.1 监听用户请求<a class="anchor" href="#11-%e7%9b%91%e5%90%ac%e7%94%a8%e6%88%b7%e8%af%b7%e6%b1%82">#</a></h3>
+<p>监听的任务是由<code>kube-apiserver</code>这个组件来完成的，它实际上是一个WEB服务，一般是以双向TLS认证方式启动的，所以在启动时需要提供证书、私钥、客户端的CA证书和CA私钥，当然也支持HTTP的方式，启动后就开始监听用户请求了。</p>
+<h3 id="12-对请求分类">1.2 对请求分类<a class="anchor" href="#12-%e5%af%b9%e8%af%b7%e6%b1%82%e5%88%86%e7%b1%bb">#</a></h3>
+<p><code>kube-apiserver</code>中的WEB服务在启动时注册了很多的Handler，golang中的Handler相当于Java中的servlet或者是Spring中的Controller，是对某一业务逻辑的封装，通俗点说，一个Handler负责对一个URI请求的处理，而在<code>kube-apiserver</code>中，Handler被封装成了一个叫Store的对象，怎么封装的呢？比如<code>/api/v1/namespaces/{namespace}/pods</code>这个URI对应了一个叫<code>PodStorage</code>的Store，这个Store中包含了对<code>/api/v1/namespaces/{namespace}/pods</code>的多个Handler，这些Handler有的是处理创建请求，有的是处理删除请求等等，代表了对一种资源的操作集。</p>
+<p>我们来看看这个Store的定义：
+<code>staging/src/k8s.io/apiserver/pkg/registry/generic/registry/store.go</code></p>
+<pre tabindex="0"><code>type Store struct {
+    CreateStrategy rest.RESTCreateStrategy
+    AfterCreate ObjectFunc
+    UpdateStrategy rest.RESTUpdateStrategy
+    AfterUpdate ObjectFunc
+    DeleteStrategy rest.RESTDeleteStrategy
+    AfterDelete ObjectFunc
+...
+}
+
+func (e *Store) Create(ctx genericapirequest.Context, obj runtime.Object, includeUninitialized bool) (runtime.Object, error) {
+
+func (e *Store) Update(ctx genericapirequest.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+...</code></pre><p>因为每种资源所需要的操作不一样，所以Store中只包含了基本的通用的操作，作为一个基础类。</p>
+<h3 id="13-处理请求">1.3 处理请求<a class="anchor" href="#13-%e5%a4%84%e7%90%86%e8%af%b7%e6%b1%82">#</a></h3>
+<p>在Store的定义中有一个<code>Storage   storage.Interface</code>字段，Store中的创建、更新、删除等操作，比如上面的<code>Create()</code>函数中会调用这个对象中的<code>Create()</code>方法，也就是说这个Storage对象包含了一组更低级的操作，可以看作是数据的持久化层，这些操作都是通用的，而Store可以用Storage中的功能组合出具有不同功能的控制层对象，也就是Store对象啊，，好吧我们距离真相又进了一步，那这个<code>Storage  storage.Interface</code>对象又是怎样实现的呢？</p>
+<h3 id="14-数据存储到etcd">1.4 数据存储到ETCD<a class="anchor" href="#14-%e6%95%b0%e6%8d%ae%e5%ad%98%e5%82%a8%e5%88%b0etcd">#</a></h3>
+<p><code>Storage</code>字段是一个叫<code>Interface</code>的类型，里面定义了一些数据持久层的操作，这里就不贴出来了，我们更关心它的实现，我们先来看看Interface实例的创建吧，它的创
+建工作是由一个工厂类负责的：
+<code>staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/factory.go</code></p>
+<pre tabindex="0"><code>func Create(c storagebackend.Config) (storage.Interface, DestroyFunc, error) {
+        switch c.Type {
+        case storagebackend.StorageTypeETCD2:
+                return newETCD2Storage(c)
+        case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
+                return newETCD3Storage(c)
+        default:
+                return nil, nil, fmt.Errorf(&#34;unknown storage type: %s&#34;, c.Type)
+        }
+}</code></pre><p>好吧，看到这里就彻底明白了，根据配置中指定的存储服务创建不同的Storage对象，并且目前只支持ETCD2和ETCD3两种存储服务，持久层所做的增删改查就是对ETCD中
+数据的增删改查，总结一下Storage对象也是就Interface被创建的过程：</p>
+<ol>
+<li>根据配置中提供的存储服务名称选择进入相应的创建函数，也就是上面的逻辑。</li>
+<li>从配置对象中取出我们启动<code>kube-apiserver</code>时指定的ETCD的证书证书、私钥和CA证书（如果开启了双向证），用于apiserver和ETCD通信，用这些信息生成一个配置对象。</li>
+<li>用配置对象创建一个ETCD的客户端。</li>
+<li>创建一个<code>k8s.io/apiserver/pkg/storage/etcd3.store</code>对象并让其持有这个ETCD客户端</li>
+<li>将这个对象作为Interface返回。</li>
+</ol>
+<h3 id="15-调用etcd客户端">1.5 调用ETCD客户端<a class="anchor" href="#15-%e8%b0%83%e7%94%a8etcd%e5%ae%a2%e6%88%b7%e7%ab%af">#</a></h3>
+<p>那么这个<code>k8s.io/apiserver/pkg/storage/etcd3.store</code>对象就成了关键啦，因为它现了Interface的所有接口函数，我们看看它的<code>Create()</code>函数据是怎样实现的：
+<code>vendor/k8s.io/apiserver/pkg/storage/etcd3/store.go</code></p>
+<pre tabindex="0"><code>// Create implements storage.Interface.Create.
+func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
+        if version, err := s.versioner.ObjectResourceVersion(obj); err == nil &amp;&amp; version != 0 {
+                return errors.New(&#34;resourceVersion should not be set on objects to be created&#34;)
+        }
+        data, err := runtime.Encode(s.codec, obj)
+        if err != nil {
+                return err
+        }
+        key = path.Join(s.pathPrefix, key)
+
+        opts, err := s.ttlOpts(ctx, int64(ttl))
+        if err != nil {
+                return err
+        }
+
+        newData, err := s.transformer.TransformToStorage(data, authenticatedDataString(key))
+        if err != nil {
+                return storage.NewInternalError(err.Error())
+        }
+
+        txnResp, err := s.client.KV.Txn(ctx).If(
+                notFound(key),
+        ).Then(
+                clientv3.OpPut(key, string(newData), opts...),
+        ).Commit()
+        if err != nil {
+                return err
+        }
+        if !txnResp.Succeeded {
+                return storage.NewKeyExistsError(key, 0)
+        }
+
+        if out != nil {
+                putResp := txnResp.Responses[0].GetResponsePut()
+                return decode(s.codec, s.versioner, data, out, putResp.Header.Revision)
+        }
+        return nil
+}</code></pre><p>其中<code>txnResp, err := s.client.KV.Txn(ctx).If(</code>这一行就是调用ETCD客户端了。</p>
+<h2 id="21-调度pod">2.1 调度Pod<a class="anchor" href="#21-%e8%b0%83%e5%ba%a6pod">#</a></h2>
+<p>调度工作是由<code>kube-scheduler</code>负责的，而且不受<code>kube-apiserver</code>控制，<code>kube-scheduler</code>通过<code>kube-apiserver</code>的REST API不断地检查是否有新的且还没有被调度的Pod，如果如有则根据配置中的调度算法为其绑定到某个节点，绑定的过程也是通过REST API将信息写入到<code>kube-apiserver</code>中的，对应的REST API定义如下：
+<code>pkg/registry/core/rest/storage_core.go</code></p>
+<pre tabindex="0"><code>func (c LegacyRESTStorageProvider) NewLegacyRESTStorage(restOptionsGetter generic.RESTOptionsGetter) (LegacyRESTStorage, genericapiserver.APIGroupInfo, error) {
+...
+        restStorageMap := map[string]rest.Storage{
+...
+                &#34;pods/binding&#34;:     podStorage.Binding,
+                &#34;bindings&#34;:         podStorage.Binding,
+...</code></pre><p><code>&quot;pods/binding&quot;</code>和<code>&quot;bindings&quot;</code>两个API就是了。</p>
+<p>下面是REST API<code>/api/v1/namespaces/{my-ns}/pods</code>对应的Store对象的定义：
+<code>pkg/registry/core/pod/storage/storage.go</code></p>
+<pre tabindex="0"><code>func NewStorage(optsGetter generic.RESTOptionsGetter, k client.ConnectionInfoGetter, proxyTransport http.RoundTripper, podDisruptionBudgetClient policyclient.PodDisruptionBudgetsGetter) PodStorage {
+...
+        return PodStorage{
+                Pod:         &amp;REST{store, proxyTransport},
+                Binding:     &amp;BindingREST{store: store},</code></pre><p>其中的<code>Binding</code>字段就是关于绑定逻辑的Store了。</p>
+<h2 id="31-创建pod">3.1 创建Pod<a class="anchor" href="#31-%e5%88%9b%e5%bb%bapod">#</a></h2>
+<p>最后的创建工作由各个节点上的<code>kubelet</code>组件负责，工作原理同<code>kube-scheduler</code>一样，通过REST API从<code>kube-apiserver</code>循环监听是否有新创建的并且已经被绑定到自己节点的Pod，如果有则在自己的节点上创建相应的Docker容器并设置容器的网络、端口转发、内存和CPU限制等，然后把结果用REST API通知给<code>kube-apiserver</code>。</p>
+<p>kubelet创建Pod的过程，主要逻辑在k8s源码的<a href="https://github.com/kubernetes/kubernetes/blob/release-1.10/pkg/kubelet/kuberuntime/kuberuntime_manager.go#L567">pkg/kubelet/kuberuntime/kuberuntime_manager.go</a>文件的<code>SyncPod()</code>函数中：</p>
+<ol>
+<li>
+<p>检查Pod信息是否有更改，如果是则杀死现有的Pod，包括Pod中的所有容器。</p>
+</li>
+<li>
+<p>创建SandBox（沙箱），其实就是启动pause容器，这个过程中包含了一些重要操作：</p>
+<ul>
+<li>
+<p>创建SandBox的函数：<a href="https://github.com/kubernetes/kubernetes/blob/release-1.10/pkg/kubelet/dockershim/docker_sandbox.go#L79">pkg/kubelet/dockershim/docker_sandbox.go:79</a></p>
+<pre tabindex="0"><code>func (ds *dockerService) RunPodSandbox(ctx context.Context, r *runtimeapi.RunPodSandboxRequest) (*runtimeapi.RunPodSandboxResponse, error) {</code></pre></li>
+<li>
+<p>拉取pause容器的镜像。</p>
+</li>
+<li>
+<p>启动pause容器。</p>
+</li>
+<li>
+<p>写入resolv.conf文件，覆盖docker默认创建的resolv.conf文件：<a href="https://github.com/kubernetes/kubernetes/blob/release-1.10/pkg/kubelet/dockershim/docker_sandbox.go#L140">pkg/kubelet/dockershim/docker_sandbox.go:140</a></p>
+<pre tabindex="0"><code>containerInfo, err := ds.client.InspectContainer(createResp.ID)</code></pre></li>
+<li>
+<p>设置Pod网络，也就是调用CNI来为容器添加网卡：<a href="https://github.com/kubernetes/kubernetes/blob/release-1.10/pkg/kubelet/dockershim/docker_sandbox.go#L163">pkg/kubelet/dockershim/docker_sandbox.go:163</a></p>
+<pre tabindex="0"><code>err = ds.network.SetUpPod(config.GetMetadata().Namespace, config.GetMetadata().Name, cID, config.Annotations)</code></pre></li>
+</ul>
+</li>
+<li>
+<p>启动init容器。</p>
+</li>
+<li>
+<p>最后启动所有业务容器：<a href="https://github.com/kubernetes/kubernetes/blob/release-1.10/pkg/kubelet/kuberuntime/kuberuntime_manager.go#L712">pkg/kubelet/kuberuntime/kuberuntime_manager.go:712</a></p>
+<pre tabindex="0"><code>for _, idx := range podContainerChanges.ContainersToStart {
+		if msg, err := m.startContainer(podSandboxID, podSandboxConfig, container, pod, podStatus, pullSecrets, podIP, kubecontainer.ContainerTypeRegular); err != nil {
+...
+}</code></pre></li>
+</ol>
+<p>至此Pod就算创建完成了，如果创建了相应的service，那么proxy组件会为service在物理机上通过<code>iptables</code>工具创建数据转发规则，将集群内的请求Pod的数据转发到相应的Pod中，如果Pod有多个副本，则以负载均衡的方式分别转发给这个Pod。</p>
+<h2 id="相关资料">相关资料<a class="anchor" href="#%e7%9b%b8%e5%85%b3%e8%b5%84%e6%96%99">#</a></h2>
+<ul>
+<li><a href="/articles/kubernetes/k8s-code-kubelet">kubelet源码分析</a></li>
+</ul>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/kubernetes/k8s-code-kubelet.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="k8s源码分析-kubelet" />
+        <span>k8s源码分析-kubelet</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/kubernetes/k8s-code-scheduler-start.html" class="flex align-center">
+        <span>k8s源码分析-scheduler</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="k8s源码分析-scheduler" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#11-监听用户请求">1.1 监听用户请求</a></li>
+        <li><a href="#12-对请求分类">1.2 对请求分类</a></li>
+        <li><a href="#13-处理请求">1.3 处理请求</a></li>
+        <li><a href="#14-数据存储到etcd">1.4 数据存储到ETCD</a></li>
+        <li><a href="#15-调用etcd客户端">1.5 调用ETCD客户端</a></li>
+      </ul>
+    </li>
+    <li><a href="#21-调度pod">2.1 调度Pod</a></li>
+    <li><a href="#31-创建pod">3.1 创建Pod</a></li>
+    <li><a href="#相关资料">相关资料</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

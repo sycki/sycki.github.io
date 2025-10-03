@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>网络编程 on 橡果笔记</title>
+    <link>http://localhost:1313/network/index.html</link>
+    <description>Recent content in 网络编程 on 橡果笔记</description>
+    <generator>Hugo</generator>
+    <language>en</language>
+    <atom:link href="http://localhost:1313/network/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title></title>
+      <link>http://localhost:1313/network/tcp-theory.html</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1313/network/tcp-theory.html</guid>
+      <description>&lt;h1 id=&#34;tcp原理&#34;&gt;TCP原理&lt;a class=&#34;anchor&#34; href=&#34;#tcp%e5%8e%9f%e7%90%86&#34;&gt;#&lt;/a&gt;&lt;/h1&gt;&#xA;&lt;h2 id=&#34;字段说明&#34;&gt;字段说明&lt;a class=&#34;anchor&#34; href=&#34;#%e5%ad%97%e6%ae%b5%e8%af%b4%e6%98%8e&#34;&gt;#&lt;/a&gt;&lt;/h2&gt;&#xA;&lt;p&gt;&lt;img src=&#34;img/tcp-theory/tcp-header.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&#xA;&lt;h4 id=&#34;序号seq&#34;&gt;序号（SEQ）&lt;a class=&#34;anchor&#34; href=&#34;#%e5%ba%8f%e5%8f%b7seq&#34;&gt;#&lt;/a&gt;&lt;/h4&gt;&#xA;&lt;p&gt;序号类似于自增ID，用于标识当前数据包在所有数据包中的位置，它的自增规则如下：&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;发送一个序号字段不为空的数据包时，该数据包本身占一个序号，故响应包的确认号&lt;code&gt; = 发送方序号+data_length+1&lt;/code&gt;&lt;/li&gt;&#xA;&lt;li&gt;发送一个序号字段为空的数据包时（如纯ACK响应），该数据包本身不占序号，故响应包的确认号&lt;code&gt; = 发送方序号+data_length&lt;/code&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;h4 id=&#34;确认号ack&#34;&gt;确认号（ACK）&lt;a class=&#34;anchor&#34; href=&#34;#%e7%a1%ae%e8%ae%a4%e5%8f%b7ack&#34;&gt;#&lt;/a&gt;&lt;/h4&gt;&#xA;&lt;p&gt;用于接收方通知发送方，前面的包已经收到无误，且下次希望收到序号为几的包。&lt;/p&gt;&#xA;&lt;h4 id=&#34;首部长度字段&#34;&gt;首部长度字段&lt;a class=&#34;anchor&#34; href=&#34;#%e9%a6%96%e9%83%a8%e9%95%bf%e5%ba%a6%e5%ad%97%e6%ae%b5&#34;&gt;#&lt;/a&gt;&lt;/h4&gt;&#xA;&lt;p&gt;表示TCP头部一共占几个32bit，也就是说，TCP头部的最大长度为 = (2^4-1) * (32/8) = 15 * 4 = 60字节。&lt;/p&gt;&#xA;&lt;h4 id=&#34;窗口&#34;&gt;窗口&lt;a class=&#34;anchor&#34; href=&#34;#%e7%aa%97%e5%8f%a3&#34;&gt;#&lt;/a&gt;&lt;/h4&gt;&#xA;&lt;p&gt;用于接收方通知发送方，自己的接受缓存区剩余字节数，最大为2^16-1=65535，当需要更大值时，通常加入窗口缩放因子字段（window scale），例如窗口字段为2048，缩放因子为8，则实际窗口大小为：2048 &amp;laquo; 8。&lt;/p&gt;&#xA;&lt;h4 id=&#34;标志位&#34;&gt;标志位&lt;a class=&#34;anchor&#34; href=&#34;#%e6%a0%87%e5%bf%97%e4%bd%8d&#34;&gt;#&lt;/a&gt;&lt;/h4&gt;&#xA;&lt;p&gt;URG 紧急指针（u rgent pointer）有效 。&#xA;ACK 确认序号有效。&#xA;PSH 接收方应该尽快将这个报文段交给应用层。&#xA;RST 重建连接。&#xA;SYN 同步序号用来发起一个连接。&#xA;FIN 发端完成发送任务。&lt;/p&gt;&#xA;&lt;h2 id=&#34;连接过程&#34;&gt;连接过程&lt;a class=&#34;anchor&#34; href=&#34;#%e8%bf%9e%e6%8e%a5%e8%bf%87%e7%a8%8b&#34;&gt;#&lt;/a&gt;&lt;/h2&gt;&#xA;&lt;p&gt;&lt;code&gt;A&amp;gt;B&lt;/code&gt;&#xA;随机一个序号A_SEQ：100，（意义：告诉B，A的初始序号）&#xA;确认号：空&#xA;在控制区设置SYN：1&#xA;在选项区添加MSS:1460，（意义：告诉B，A能接受的最大数据区大小，通常为1460：MAC包1514-MAC头14-IP头20-TCP头20）&lt;/p&gt;&#xA;&lt;p&gt;&lt;code&gt;A&amp;lt;B&lt;/code&gt;&#xA;随机一个序号B_SEQ：200，（意义：告诉A，B的初始序号）&#xA;确认号：101（A_SEQ+data_length+1），（意义：告诉A，B想要序号为几的包，上一条SYN本身占一个序号）&#xA;在控制区设置SYN：1&#xA;在控制区设置ACK：1&#xA;在选项区添加MSS:1460，（意义：告诉A，B能接受的最大数据区大小，通常为1460：MAC包1514-MAC头14-IP头20-TCP头20）&lt;/p&gt;&#xA;&lt;p&gt;&lt;code&gt;A&amp;gt;B&lt;/code&gt;（纯ACK响应）&#xA;序号A_SEQ：空&#xA;确认号：201（B_SEQ+data_length+1），（意义：告诉B，A想要序号为几的包，上一条SYN本身占一个序号）&#xA;在控制区设置ACK：1&#xA;在选项区添加最大序列大小字段，通常为1460（MAC包1514-IP头20-TCP头20）MSS：1460&lt;/p&gt;&#xA;&lt;h2 id=&#34;发送数据过程&#34;&gt;发送数据过程&lt;a class=&#34;anchor&#34; href=&#34;#%e5%8f%91%e9%80%81%e6%95%b0%e6%8d%ae%e8%bf%87%e7%a8%8b&#34;&gt;#&lt;/a&gt;&lt;/h2&gt;&#xA;&lt;p&gt;&lt;code&gt;A&amp;gt;B&lt;/code&gt;（发送三个字节abc）&#xA;序号A_SEQ：101，（意义：告诉B，这是序号为几的包）&#xA;确认号：201（B_SEQ+data_length+1），（意义：告诉B，A想要序号为几的包）&#xA;在控制区设置PUS：1&#xA;在控制区设置ACK：1&#xA;选项区：空&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

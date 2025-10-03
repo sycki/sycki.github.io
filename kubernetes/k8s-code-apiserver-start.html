@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="k8s源码分析-apiserver#
+本系列文章是基于kubernetes1.7版本的。
+main函数#
+apiserver的入口定义在cmd/kube-apiserver/apiserver.go文件中：
+func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	// 创建一个默认配置对象
+	s := options.NewServerRunOptions()
+	
+	// 构建命令行对象
+	s.AddFlags(pflag.CommandLine)
+
+    // 解析命令行参数
+	flag.InitFlags()
+	logs.InitLogs()
+	defer logs.FlushLogs()
+
+	// 如果指定了-version选项，则打印版本号然后退出
+	verflag.PrintAndExitIfRequested()
+
+	// 启动服务，并从管道中监听停止信号，该通道可能永远不会写入数据
+	if err := app.Run(s, wait.NeverStop); err != nil {
+		fmt.Fprintf(os.Stderr, &#34;%v\n&#34;, err)
+		os.Exit(1)
+	}
+}这个main函数看起来是比较直观的，中文的注释是我加上去的，便于阅读。
+初始化配置#
+在main函数中的第一行是为随机数产生器用当前时间提供了一个基数，避免多次启动产生相同的值，说明在这个组件中可能有些功能依赖了随数机。
+s := options.NewServerRunOptions()显然是在创建一个配置对象，不过这个对象中只包含一些默认参数。
+s.AddFlags(pflag.CommandLine)是构建一个命令行对象，怎么构建的呢，其实就是s在pflag.CommandLine这个对象中加了很多选项，并把自己的在很多字段以指针的方式注入到了pflag.CommandLine中，这些选项是经过分组的，如ETCD相关配置、apiserver相关的请求超时时间等。
+紧接着flag.InitFlags()解析所有命令行参数，并通过指针把值放到配置对象s中。
+其中flag这个包是k8s对开源项目github.com/spf13/pflag的封装，而这个项目又是基于golang标准库中的flag包开发的，并且封装了一些实用的函数，可以让你快速生成自己的命令行选项。
+准备资源#
+然后调用到了Run()函数，定义在cmd/kube-apiserver/app/server.go文件中，这里代码较多就不全部贴出来了，为了保持文章的可读性，我会尽量减少函数展开的层数。
+nodeTunneler, proxyTransport, err := CreateNodeDialer(runOptions)上面代码判断是否安装在云主机上，如果是，并且指定了密钥文件，也是就--ssh-keyfile选项，则安装key到所有云主机的实例中，然后使用该密钥文件创建一个连接器nodeTunneler，用来访问其它节点。
+kubeAPIServerConfig, sharedInformers, versionedInformers, insecureServingOptions, serviceResolver, err := CreateKubeAPIServerConfig(runOptions, nodeTunneler, proxyTransport)这句是利用最初的配置对象runOptions创建用于启动apiserver的配置对象，与runOptions不同的是，它还包括了启动apiserver所需的资源。
+该函数中做了以下几件事：
+
+根据用户指定的--admission-control列表加载相应的admission插件，这些插件的作用是用来过滤API请求的，可以用来作请求的合法性检测，比如我们对所有get csr的请求进行用户验证，如果该用户权限太低则拒绝该请求；也可以修改某个请求，比如为所有create deployments的请求加上scale=1等等。默认不加载任何规则。
+如果有必要的配置没有设置则为其设置默认值，如Service IP段、序列化缓存大小等。
+验证必要配置项，如果在此阶段有错误配置项，则所有错误信息将被打包返回。
+如果验证通过则开始连接ETCD，并启动同步信息的进程，该进程会一直监听apiserver的数据并同步到ETCD集群中。
+最后创建master.Config对象，也就是kubeAPIServerConfig变量，然后返回。
+
+kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, sharedInformers, apiExtensionsConfig.CRDRESTOptionsGetter)这行代码是比较核心的，它的作用如下：">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/kubernetes/k8s-code-apiserver-start.html">
+  <meta property="og:site_name" content="橡果笔记">
+  <meta property="og:title" content="橡果笔记">
+  <meta property="og:description" content="k8s源码分析-apiserver# 本系列文章是基于kubernetes1.7版本的。
+main函数# apiserver的入口定义在cmd/kube-apiserver/apiserver.go文件中：
+func main() { rand.Seed(time.Now().UTC().UnixNano()) // 创建一个默认配置对象 s := options.NewServerRunOptions() // 构建命令行对象 s.AddFlags(pflag.CommandLine) // 解析命令行参数 flag.InitFlags() logs.InitLogs() defer logs.FlushLogs() // 如果指定了-version选项，则打印版本号然后退出 verflag.PrintAndExitIfRequested() // 启动服务，并从管道中监听停止信号，该通道可能永远不会写入数据 if err := app.Run(s, wait.NeverStop); err != nil { fmt.Fprintf(os.Stderr, &#34;%v\n&#34;, err) os.Exit(1) } }这个main函数看起来是比较直观的，中文的注释是我加上去的，便于阅读。
+初始化配置# 在main函数中的第一行是为随机数产生器用当前时间提供了一个基数，避免多次启动产生相同的值，说明在这个组件中可能有些功能依赖了随数机。
+s := options.NewServerRunOptions()显然是在创建一个配置对象，不过这个对象中只包含一些默认参数。
+s.AddFlags(pflag.CommandLine)是构建一个命令行对象，怎么构建的呢，其实就是s在pflag.CommandLine这个对象中加了很多选项，并把自己的在很多字段以指针的方式注入到了pflag.CommandLine中，这些选项是经过分组的，如ETCD相关配置、apiserver相关的请求超时时间等。
+紧接着flag.InitFlags()解析所有命令行参数，并通过指针把值放到配置对象s中。
+其中flag这个包是k8s对开源项目github.com/spf13/pflag的封装，而这个项目又是基于golang标准库中的flag包开发的，并且封装了一些实用的函数，可以让你快速生成自己的命令行选项。
+准备资源# 然后调用到了Run()函数，定义在cmd/kube-apiserver/app/server.go文件中，这里代码较多就不全部贴出来了，为了保持文章的可读性，我会尽量减少函数展开的层数。
+nodeTunneler, proxyTransport, err := CreateNodeDialer(runOptions)上面代码判断是否安装在云主机上，如果是，并且指定了密钥文件，也是就--ssh-keyfile选项，则安装key到所有云主机的实例中，然后使用该密钥文件创建一个连接器nodeTunneler，用来访问其它节点。
+kubeAPIServerConfig, sharedInformers, versionedInformers, insecureServingOptions, serviceResolver, err := CreateKubeAPIServerConfig(runOptions, nodeTunneler, proxyTransport)这句是利用最初的配置对象runOptions创建用于启动apiserver的配置对象，与runOptions不同的是，它还包括了启动apiserver所需的资源。
+该函数中做了以下几件事：
+根据用户指定的--admission-control列表加载相应的admission插件，这些插件的作用是用来过滤API请求的，可以用来作请求的合法性检测，比如我们对所有get csr的请求进行用户验证，如果该用户权限太低则拒绝该请求；也可以修改某个请求，比如为所有create deployments的请求加上scale=1等等。默认不加载任何规则。 如果有必要的配置没有设置则为其设置默认值，如Service IP段、序列化缓存大小等。 验证必要配置项，如果在此阶段有错误配置项，则所有错误信息将被打包返回。 如果验证通过则开始连接ETCD，并启动同步信息的进程，该进程会一直监听apiserver的数据并同步到ETCD集群中。 最后创建master.Config对象，也就是kubeAPIServerConfig变量，然后返回。 kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, sharedInformers, apiExtensionsConfig.CRDRESTOptionsGetter)这行代码是比较核心的，它的作用如下：">
+  <meta property="og:locale" content="en">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="kubernetes">
+<title>k8s源码分析-apiserver | 橡果笔记</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1313/kubernetes/k8s-code-apiserver-start.html">
+<link rel="stylesheet" href="/book.min.c098be6fdb8410d437a0799e694b206fa639685582089c583ae6ac07afec1ff8.css" integrity="sha256-wJi&#43;b9uEENQ3oHmeaUsgb6Y5aFWCCJxYOuasB6/sH/g=" crossorigin="anonymous">
+
+
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+
+  <script
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"
+></script>
+<meta name="referrer" content="no-referrer-when-downgrade" />
+</head>
+<body dir="ltr" class="book-kind-page book-type-kubernetes">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/index.html"><img src="/favicon.png" alt="Logo" /><span>橡果笔记</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c43281baae2cfc496810cc1f0d196095" class="toggle"  />
+    <label for="section-c43281baae2cfc496810cc1f0d196095" class="flex">
+      <a role="button" class="">
+        Atlas Case</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11111.html" class="">
+      11111</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11112.html" class="">
+      11112</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11113.html" class="">
+      11113</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11114.html" class="">
+      11114</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11115.html" class="">
+      11115</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11116.html" class="">
+      11116</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11117.html" class="">
+      11117</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11118.html" class="">
+      11118</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11119.html" class="">
+      11119</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11120.html" class="">
+      11120</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11121.html" class="">
+      11121</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11122.html" class="">
+      11122</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11123.html" class="">
+      11123</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11124.html" class="">
+      11124</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11125.html" class="">
+      11125</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11126.html" class="">
+      11126</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11127.html" class="">
+      11127</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11128.html" class="">
+      11128</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11129.html" class="">
+      11129</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/atlas-case/11130.html" class="">
+      11130</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-12d4232cf896b89b6af3619d86f786b1" class="toggle"  />
+    <label for="section-12d4232cf896b89b6af3619d86f786b1" class="flex">
+      <a role="button" class="">
+        Golang</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/find-index-in-cycle-array.html" class="">
+      在循环数组中找出索引</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-get-package-to-dir.html" class="">
+      下载包到指定目录</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-grpc-demo.html" class="">
+      gRPC使用指南</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-profiler.html" class="">
+      应用性能分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-regexp-performance.html" class="">
+      正则性能优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-tls-web.html" class="">
+      web应用开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/golang-web-and-curl.html" class="">
+      解析客户端参数</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/golang/unicode-to-zh.html" class="">
+      unicode转中文</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="toggle"  />
+    <label for="section-b0c7fc0f44fa6f9b2b6b2aaa166d103d" class="flex">
+      <a role="button" class="">
+        Java</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-from-class-to-machine-code.html" class="">
+      Java - 从CLASS到机器码</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/java-nio-frame.html" class="">
+      Java - NIO框架</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/java/netty-guide.html" class="">
+      Java - Netty入门</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-1fba834cea86f65b73a207a4c7222a69" class="toggle"  />
+    <label for="section-1fba834cea86f65b73a207a4c7222a69" class="flex">
+      <a role="button" class="">
+        Linux</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-centos7-multi-ip.html" class="">
+      Centos7增加子IP</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-parallel-progress.html" class="">
+      炫酷的并行进度条</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-pipe-redirect.html" class="">
+      管道与重定向详解</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-read-file-by-line.html" class="">
+      逐行读取文件的几种方法</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-resolve-iptables.html" class="">
+      理解iptables</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/linux/linux-send-mail.html" class="">
+      发送邮件的两种方式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-a678cfd4d00720650628dd6c008f4ee1" class="toggle"  />
+    <label for="section-a678cfd4d00720650628dd6c008f4ee1" class="flex">
+      <a role="button" class="">
+        健康管理</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d037bff0aa1de2c37d870a73480bbe84" class="toggle"  />
+    <label for="section-d037bff0aa1de2c37d870a73480bbe84" class="flex">
+      <a role="button" class="">
+        大数据</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/ambari-quick-build-bigdata-platform.html" class="">
+      Ambari - 三条命令创建集群</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-docker.html" class="">
+      Bigdata on Docker</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/bigdate-on-kubernetes.html" class="">
+      Bigdata on Kubernetes</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-optimiz.html" class="">
+      Spark on Yarn - 性能调优</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-performance-test.html" class="">
+      Spark - 性能测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-1.html" class="">
+      Spark - 源码分析（一）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-2.html" class="">
+      Spark - 源码分析（二）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-3.html" class="">
+      Spark - 源码分析（三）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-4.html" class="">
+      Spark – 源码分析（四）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-source-code-5.html" class="">
+      Spark - 源码分析（图）</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/bigdata/spark-thrift-mode.html" class="">
+      Spark - Thrift Server模式</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-91c0d79a971e1d12f575b6033d9c8855" class="toggle" checked />
+    <label for="section-91c0d79a971e1d12f575b6033d9c8855" class="flex">
+      <a role="button" class="">
+        容器开发</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-auto-test-product.html" class="">
+      产品自动化测试</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-bigdata-develope.html" class="">
+      与大数据平台开发</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-build-centos65.html" class="">
+      手工构建基础镜像</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-container.html" class="">
+      DOCKER源码-创建容器</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-create-network.html" class="">
+      DOCKER源码-创建网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-code-start-dockerd.html" class="">
+      DOCKER源码-启动流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-config-direct-lvm.html" class="">
+      配置direct-lvm</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-dynamic-port-map.html" class="">
+      动态映射端口</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-multi-host-with-zk.html" class="">
+      多主机通信之ZK</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-registry-deploy-manage.html" class="">
+      私有仓库的搭建与管理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/docker-with-glusterfs.html" class="">
+      数据持久化之GlusterFS</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-calico.html" class="">
+      calico网络</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cni.html" class="">
+      k8s CNI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-apiserver-start.html" class="active">
+      k8s源码分析-apiserver</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-kubelet.html" class="">
+      k8s源码分析-kubelet</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-pod-create.html" class="">
+      k8s源码分析-创建Pod流程</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-code-scheduler-start.html" class="">
+      k8s源码分析-scheduler</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-cri.html" class="">
+      k8s CRI</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-dashboard-with-heapster.html" class="">
+      k8s 仪表盘与性能指标</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-expose-service.html" class="">
+      k8s 暴露服务</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/k8s-principle.html" class="">
+      k8s 基本原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubeedge-code.html" class="">
+      KubeEdge源码分析</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy-17.html" class="">
+      k8s 快速部署 1.7</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/kubernetes-quick-deloy.html" class="">
+      k8s 快速部署 1.5</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/kubernetes/popular-bgp-protocol.html" class="">
+      白话BGP协议</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-c5d12fc3b068a833366514cb64f8d255" class="toggle"  />
+    <label for="section-c5d12fc3b068a833366514cb64f8d255" class="flex">
+      <a role="button" class="">
+        开发工具</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/git.html" class="">
+      GIT常用命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/jq.html" class="">
+      JQ命令</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/develop-tool/vscode.html" class="">
+      vscode for go</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-6149a7124e796953d79adfd27cbd4453" class="toggle"  />
+    <label for="section-6149a7124e796953d79adfd27cbd4453" class="flex">
+      <a role="button" class="">
+        数据结构与算法</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-collaborative-filtering.html" class="">
+      推荐算法 - 协同过滤</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-naive-bayes.html" class="">
+      分类算法 - 朴素贝叶斯</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/algorithm/algorithm-quick-sort.html" class="">
+      排序算法 - 快速排序</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-67c69527106b60d0276c1da79ec8b117" class="toggle"  />
+    <label for="section-67c69527106b60d0276c1da79ec8b117" class="flex">
+      <a role="button" class="">
+        架构设计</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/architecture/cloud-plateform-loadbalancer.html" class="">
+      云平台 - 负载均衡器</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <input type="checkbox" id="section-d3df18c0319f8ea7ade159d66b647170" class="toggle"  />
+    <label for="section-d3df18c0319f8ea7ade159d66b647170" class="flex">
+      <a role="button" class="">
+        网络编程</a>
+      <img src="/icons/chevron-right.svg" class="book-icon" />
+    </label>
+  
+
+          
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/network/tcp-theory.html" class="">
+      TCP原理</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>k8s源码分析-apiserver</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#main函数">main函数</a></li>
+    <li><a href="#初始化配置">初始化配置</a></li>
+    <li><a href="#准备资源">准备资源</a></li>
+    <li><a href="#启动服务">启动服务</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="k8s源码分析-apiserver">k8s源码分析-apiserver<a class="anchor" href="#k8s%e6%ba%90%e7%a0%81%e5%88%86%e6%9e%90-apiserver">#</a></h1>
+<p>本系列文章是基于kubernetes1.7版本的。</p>
+<h2 id="main函数">main函数<a class="anchor" href="#main%e5%87%bd%e6%95%b0">#</a></h2>
+<p>apiserver的入口定义在<code>cmd/kube-apiserver/apiserver.go</code>文件中：</p>
+<pre tabindex="0"><code>func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	// 创建一个默认配置对象
+	s := options.NewServerRunOptions()
+	
+	// 构建命令行对象
+	s.AddFlags(pflag.CommandLine)
+
+    // 解析命令行参数
+	flag.InitFlags()
+	logs.InitLogs()
+	defer logs.FlushLogs()
+
+	// 如果指定了-version选项，则打印版本号然后退出
+	verflag.PrintAndExitIfRequested()
+
+	// 启动服务，并从管道中监听停止信号，该通道可能永远不会写入数据
+	if err := app.Run(s, wait.NeverStop); err != nil {
+		fmt.Fprintf(os.Stderr, &#34;%v\n&#34;, err)
+		os.Exit(1)
+	}
+}</code></pre><p>这个main函数看起来是比较直观的，中文的注释是我加上去的，便于阅读。</p>
+<h2 id="初始化配置">初始化配置<a class="anchor" href="#%e5%88%9d%e5%a7%8b%e5%8c%96%e9%85%8d%e7%bd%ae">#</a></h2>
+<p>在main函数中的第一行是为随机数产生器用当前时间提供了一个基数，避免多次启动产生相同的值，说明在这个组件中可能有些功能依赖了随数机。</p>
+<p><code>s := options.NewServerRunOptions()</code>显然是在创建一个配置对象，不过这个对象中只包含一些默认参数。</p>
+<p><code>s.AddFlags(pflag.CommandLine)</code>是构建一个命令行对象，怎么构建的呢，其实就是<code>s</code>在<code>pflag.CommandLine</code>这个对象中加了很多选项，并把自己的在很多字段以指针的方式注入到了<code>pflag.CommandLine</code>中，这些选项是经过分组的，如ETCD相关配置、apiserver相关的请求超时时间等。</p>
+<p>紧接着<code>flag.InitFlags()</code>解析所有命令行参数，并通过指针把值放到配置对象<code>s</code>中。</p>
+<p>其中<code>flag</code>这个包是k8s对开源项目<code>github.com/spf13/pflag</code>的封装，而这个项目又是基于golang标准库中的flag包开发的，并且封装了一些实用的函数，可以让你快速生成自己的命令行选项。</p>
+<h2 id="准备资源">准备资源<a class="anchor" href="#%e5%87%86%e5%a4%87%e8%b5%84%e6%ba%90">#</a></h2>
+<p>然后调用到了Run()函数，定义在cmd/kube-apiserver/app/server.go文件中，这里代码较多就不全部贴出来了，为了保持文章的可读性，我会尽量减少函数展开的层数。</p>
+<pre tabindex="0"><code>nodeTunneler, proxyTransport, err := CreateNodeDialer(runOptions)</code></pre><p>上面代码判断是否安装在云主机上，如果是，并且指定了密钥文件，也是就<code>--ssh-keyfile</code>选项，则安装key到所有云主机的实例中，然后使用该密钥文件创建一个连接器<code>nodeTunneler</code>，用来访问其它节点。</p>
+<pre tabindex="0"><code>kubeAPIServerConfig, sharedInformers, versionedInformers, insecureServingOptions, serviceResolver, err := CreateKubeAPIServerConfig(runOptions, nodeTunneler, proxyTransport)</code></pre><p>这句是利用最初的配置对象<code>runOptions</code>创建用于启动apiserver的配置对象，与<code>runOptions</code>不同的是，它还包括了启动apiserver所需的资源。</p>
+<p>该函数中做了以下几件事：</p>
+<ol>
+<li>根据用户指定的<code>--admission-control</code>列表加载相应的admission插件，这些插件的作用是用来过滤API请求的，可以用来作请求的合法性检测，比如我们对所有<code>get csr</code>的请求进行用户验证，如果该用户权限太低则拒绝该请求；也可以修改某个请求，比如为所有<code>create deployments</code>的请求加上<code>scale=1</code>等等。默认不加载任何规则。</li>
+<li>如果有必要的配置没有设置则为其设置默认值，如Service IP段、序列化缓存大小等。</li>
+<li>验证必要配置项，如果在此阶段有错误配置项，则所有错误信息将被打包返回。</li>
+<li>如果验证通过则开始连接ETCD，并启动同步信息的进程，该进程会一直监听apiserver的数据并同步到ETCD集群中。</li>
+<li>最后创建<code>master.Config</code>对象，也就是<code>kubeAPIServerConfig</code>变量，然后返回。</li>
+</ol>
+<pre tabindex="0"><code>kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, sharedInformers, apiExtensionsConfig.CRDRESTOptionsGetter)</code></pre><p>这行代码是比较核心的，它的作用如下：</p>
+<ol>
+<li>首先对<code>kubeAPIServerConfig</code>做一个配置信息的检查，如果有空缺的字段则为其补全。</li>
+<li>安装以<code>/api/v1</code>开头的的REST API，安装API的函数是<code>pkg/master/master.go</code>文件内的<code>InstallLegacyAPI()</code>函数，而把RUI和Handler对应起来的是<code>pkg/registry/core/rest/storage_core.go</code>文件内的<code>NewLegacyRESTStorage()</code>函数，我们贴出来一小段：</li>
+</ol>
+<pre tabindex="0"><code>func (c LegacyRESTStorageProvider) NewLegacyRESTStorage(restOptionsGetter generic.RESTOptionsGetter) (LegacyRESTStorage, genericapiserver.APIGroupInfo, error) {
+...
+	restStorageMap := map[string]rest.Storage{
+		&#34;pods&#34;:             podStorage.Pod,
+		&#34;pods/attach&#34;:      podStorage.Attach,
+		&#34;pods/status&#34;:      podStorage.Status,
+		&#34;pods/log&#34;:         podStorage.Log,
+		&#34;pods/exec&#34;:        podStorage.Exec,
+...
+		&#34;replicationControllers&#34;:        controllerStorage.Controller,
+		&#34;replicationControllers/status&#34;: controllerStorage.Status,
+
+		&#34;services&#34;:        serviceRest.Service,
+		&#34;services/proxy&#34;:  serviceRest.Proxy,
+		&#34;services/status&#34;: serviceStatusStorage,
+...</code></pre><p>可见在k8s中，把Handler封装成了<code>Storage</code>，其实就是一个<code>Storage</code>对象负责一个REST API的增删改查。
+3. 然后把最终的启动逻辑作为钩子，注册到<code>kubeAPIServer</code>中，但这时还没有启动，注册钩子的代码如下：</p>
+<pre tabindex="0"><code>kubeAPIServer.GenericAPIServer.AddPostStartHook(&#34;start-kube-apiserver-informers&#34;, func(context genericapiserver.PostStartHookContext) error {
+		sharedInformers.Start(context.StopCh)
+		return nil
+	})</code></pre><p>我们来说一下这个钩子函数，可以看到这里做了一个启动操作，这个<code>sharedInformers</code>是个集合，它包含了多个<code>SharedInformer</code>对象，也说是说这个启动操作其实是启动所有的<code>SharedInformer</code>，这个<code>SharedInformer</code>又是什么呢？它其实是一个缓存器，其它如kube-scheduler、kubelet等组件跟apiserver通信时都是通过缓存间接通信的，而这个<code>SharedInformer</code>一方面负责收集客户端和其它组件发来的请求，一方面负责通知该事件的关注者，使关注者可以做出相应的动作，还有就是它会定其把缓存中的数据同步到ETCD中。</p>
+<p>以下是<code>SharedInformer</code>接口的定义，在shared_informer.go文件中：</p>
+<pre tabindex="0"><code>type SharedInformer interface {
+	AddEventHandler(handler ResourceEventHandler)
+	AddEventHandlerWithResyncPeriod(handler ResourceEventHandler, resyncPeriod time.Duration)
+	GetStore() Store
+	GetController() Controller
+	Run(stopCh &lt;-chan struct{})
+	HasSynced() bool
+	LastSyncResourceVersion() string
+}</code></pre><p>前两个函数都是向该事件添加一个监听器，也就是前面说的关注者，只不过使用第二个函数可以自定义同步数据的周期间隔时间。
+<code>GetStore()</code>用来获取该事件类型的处理器，有新事件时该Store对应的逻辑会被调起。
+<code>Run()</code>就是启动该<code>SharedInformer</code>的各个进程了。</p>
+<h2 id="启动服务">启动服务<a class="anchor" href="#%e5%90%af%e5%8a%a8%e6%9c%8d%e5%8a%a1">#</a></h2>
+<p>此时我们还在<code>app.Run()</code>函数中，在函数的最后才是真正启动Server的逻辑：</p>
+<pre tabindex="0"><code>aggregatorServer.GenericAPIServer.PrepareRun().Run(stopCh)</code></pre><p>我们展开句尾的<code>.Run(stopCh)</code>看一下，这正是API服务启动的关键代码，它定义在：
+<code>kubernetes/vendor/k8s.io/apiserver/pkg/server/serve.go</code></p>
+<pre tabindex="0"><code>func (s *GenericAPIServer) serveSecurely(stopCh &lt;-chan struct{}) error {
+	secureServer := &amp;http.Server{
+		Addr:           s.SecureServingInfo.BindAddress,
+		Handler:        s.Handler,
+		MaxHeaderBytes: 1 &lt;&lt; 20,
+		TLSConfig: &amp;tls.Config{
+			NameToCertificate: s.SecureServingInfo.SNICerts,
+			MinVersion: tls.VersionTLS12,
+			NextProtos: []string{&#34;h2&#34;, &#34;http/1.1&#34;},
+		},
+	}
+
+    if s.SecureServingInfo.Cert != nil {
+		secureServer.TLSConfig.Certificates = []tls.Certificate{*s.SecureServingInfo.Cert}
+	}
+	
+    // 中间省略...
+	
+	s.effectiveSecurePort, err = RunServer(secureServer, s.SecureServingInfo.BindNetwork, stopCh)
+}</code></pre><ol>
+<li>函数的开头就是定义一个Server，这在golang中是一个标准的Server.</li>
+<li>其中的<code>s.Handler</code>是所有REST API对应的handler，golang中的handler相当于java中的servlet，或者是Spring VMC中的controller.</li>
+<li>读取配置中提供的证书、CA、私钥等，注入到Server对象中。</li>
+<li>最后一行是启动Server，里面是非阻塞式启动的，逻辑较简单，这里就不再展开了。</li>
+<li>调用刚才注册的启动钩子函数，启动各个<code>SharedInformer</code>。</li>
+<li>监听<code>stopCh</code>通道并阻塞主进程。</li>
+</ol>
+<p>到这里就是apiserver启动的全部流程了，下次细讲一下apiserver的工作流程，以及它如何处理Client发来的创建、更新、删除等请求。</p>
+</article>
+ 
+      <br/>
+<hr/>
+
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+
+
+  
+
+
+
+  
+  
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/kubernetes/k8s-cni.html" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Previous" title="k8s CNI" />
+        <span>k8s CNI</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/kubernetes/k8s-code-kubelet.html" class="flex align-center">
+        <span>k8s源码分析-kubelet</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Next" title="k8s源码分析-kubelet" />
+      </a>
+    
+    </span>
+  </div>
+  
+
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        <br/>
+
+
+<div class="busuanzi-footer">
+<span class="split"> · </span>
+<span>
+  <span id="busuanzi_container_page_pv">本文阅读量<span id="busuanzi_value_page_pv"></span>次</span>
+</span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_pv">
+    本站总访问量<span id="busuanzi_value_site_pv"></span>次
+  </span>
+<span class="split"> · </span>
+  <span id="busuanzi_container_site_uv">
+    本站访客数<span id="busuanzi_value_site_uv"></span>人次
+  </span>
+</div>
+
+
+<p><a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/"><img src="https://licensebuttons.net/l/by-nc-nd/3.0/cn/88x31.png" /></a>
+本站所有作品均采用<a href="http://creativecommons.org/licenses/by-nc-nd/3.0/cn/">知识共享署名-非商业性使用-禁止演绎 3.0 中国大陆许可协议</a>进行许可。</p>
+
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#main函数">main函数</a></li>
+    <li><a href="#初始化配置">初始化配置</a></li>
+    <li><a href="#准备资源">准备资源</a></li>
+    <li><a href="#启动服务">启动服务</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
