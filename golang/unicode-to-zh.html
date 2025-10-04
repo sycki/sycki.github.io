@@ -10,10 +10,10 @@ https://github.com/alex-shpak/hugo-book
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="unicode转中文#
 // unicode2zh 将unicode转为中文，并去掉空格
-func unicode2zh(uText string) (context string) {
+func unicode2zh(uText string) (content string) {
 	for i, char := range strings.Split(uText, `\\u`) {
 		if i &lt; 1 {
-			context = char
+			content = char
 			continue
 		}
 
@@ -22,29 +22,29 @@ func unicode2zh(uText string) (context string) {
 			pre := char[:4]
 			zh, err := strconv.ParseInt(pre, 16, 32)
 			if err != nil {
-				context &#43;= char
+				content &#43;= char
 				continue
 			}
 
-			context &#43;= fmt.Sprintf(&#34;%c&#34;, zh)
+			content &#43;= fmt.Sprintf(&#34;%c&#34;, zh)
 
 			if length &gt; 4 {
-				context &#43;= char[4:]
+				content &#43;= char[4:]
 			}
 		}
 
 	}
 
-	context = strings.TrimSpace(context)
+	content = strings.TrimSpace(content)
 
-	return context
+	return content
 }">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
 <meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1313/golang/unicode-to-zh.html">
   <meta property="og:site_name" content="橡果笔记">
   <meta property="og:title" content="橡果笔记">
-  <meta property="og:description" content="unicode转中文# // unicode2zh 将unicode转为中文，并去掉空格 func unicode2zh(uText string) (context string) { for i, char := range strings.Split(uText, `\\u`) { if i &lt; 1 { context = char continue } length := len(char) if length &gt; 3 { pre := char[:4] zh, err := strconv.ParseInt(pre, 16, 32) if err != nil { context &#43;= char continue } context &#43;= fmt.Sprintf(&#34;%c&#34;, zh) if length &gt; 4 { context &#43;= char[4:] } } } context = strings.TrimSpace(context) return context }">
+  <meta property="og:description" content="unicode转中文# // unicode2zh 将unicode转为中文，并去掉空格 func unicode2zh(uText string) (content string) { for i, char := range strings.Split(uText, `\\u`) { if i &lt; 1 { content = char continue } length := len(char) if length &gt; 3 { pre := char[:4] zh, err := strconv.ParseInt(pre, 16, 32) if err != nil { content &#43;= char continue } content &#43;= fmt.Sprintf(&#34;%c&#34;, zh) if length &gt; 4 { content &#43;= char[4:] } } } content = strings.TrimSpace(content) return content }">
   <meta property="og:locale" content="en">
   <meta property="og:type" content="article">
     <meta property="article:section" content="golang">
@@ -56,7 +56,7 @@ func unicode2zh(uText string) (context string) {
 
 
   <script defer src="/fuse.min.js"></script>
-  <script defer src="/en.search.min.15cd00d37558f9ebf065bde007abdfcffc678c14a90007173321781d2d1696e0.js" integrity="sha256-Fc0A03VY&#43;evwZb3gB6vfz/xnjBSpAAcXMyF4HS0WluA=" crossorigin="anonymous"></script>
+  <script defer src="/en.search.min.7bd807668e0aa569f7f5169eab1931ba3144ea1d1c165714065cd5f414562f7e.js" integrity="sha256-e9gHZo4KpWn39RaeqxkxujFE6h0cFlcUBlzV9BRWL34=" crossorigin="anonymous"></script>
 
   <script
   async
@@ -1553,10 +1553,10 @@ func unicode2zh(uText string) (context string) {
       
   <article class="markdown book-article"><h1 id="unicode转中文">unicode转中文<a class="anchor" href="#unicode%e8%bd%ac%e4%b8%ad%e6%96%87">#</a></h1>
 <pre tabindex="0"><code>// unicode2zh 将unicode转为中文，并去掉空格
-func unicode2zh(uText string) (context string) {
+func unicode2zh(uText string) (content string) {
 	for i, char := range strings.Split(uText, `\\u`) {
 		if i &lt; 1 {
-			context = char
+			content = char
 			continue
 		}
 
@@ -1565,22 +1565,22 @@ func unicode2zh(uText string) (context string) {
 			pre := char[:4]
 			zh, err := strconv.ParseInt(pre, 16, 32)
 			if err != nil {
-				context += char
+				content += char
 				continue
 			}
 
-			context += fmt.Sprintf(&#34;%c&#34;, zh)
+			content += fmt.Sprintf(&#34;%c&#34;, zh)
 
 			if length &gt; 4 {
-				context += char[4:]
+				content += char[4:]
 			}
 		}
 
 	}
 
-	context = strings.TrimSpace(context)
+	content = strings.TrimSpace(content)
 
-	return context
+	return content
 }</code></pre></article>
  
       <br/>
